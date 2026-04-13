@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback, RefObject } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, RefObject } from "react";
 import { Field } from "../../types";
+import SearchInput from "../SearchInput/index";
 import "./FieldConfigPanel.css";
 
 interface Props {
@@ -34,7 +35,17 @@ export default function FieldConfigPanel({
   const dragRef = useRef<DragState | null>(null);
   const dragOverRef = useRef<{ id: string | null; pos: "above" | "below" | null }>({ id: null, pos: null });
 
+  const [searchQuery, setSearchQuery] = useState("");
+
   const hiddenSet = new Set(hiddenFields);
+
+  // Filter fields by search query
+  const isSearching = searchQuery.trim().length > 0;
+  const filteredFields = useMemo(() => {
+    if (!isSearching) return fields;
+    const q = searchQuery.trim().toLowerCase();
+    return fields.filter(f => f.name.toLowerCase().includes(q));
+  }, [fields, searchQuery, isSearching]);
 
   // Position the panel below the anchor button
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -160,56 +171,69 @@ export default function FieldConfigPanel({
       <div className="field-config-header">
         Customize Field
       </div>
+      <div className="field-config-search">
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search field..."
+          onEscape={() => { if (!searchQuery) onClose(); }}
+        />
+      </div>
       <div className="field-config-list">
-        {fields.map((field) => {
-          const isHidden = hiddenSet.has(field.id);
-          const isPrimary = field.isPrimary;
-          const isDragging = dragState?.fieldId === field.id;
+        {filteredFields.length === 0 && isSearching ? (
+          <div className="field-config-empty">No fields found</div>
+        ) : (
+          filteredFields.map((field) => {
+            const isHidden = hiddenSet.has(field.id);
+            const isPrimary = field.isPrimary;
+            const isDragging = dragState?.fieldId === field.id;
+            const dragDisabled = isPrimary || isSearching;
 
-          return (
-            <div
-              key={field.id}
-              ref={(el) => { if (el) itemRefs.current.set(field.id, el); else itemRefs.current.delete(field.id); }}
-              className={`field-config-item ${isDragging ? "is-dragging" : ""} ${getDragOverClass(field.id)}`}
-              style={getDragTransform(field.id)}
-            >
-              {/* Drag handle */}
+            return (
               <div
-                className={`field-config-drag ${isPrimary ? "disabled" : ""}`}
-                onMouseDown={(e) => {
-                  if (!isPrimary) handleDragStart(e, field.id);
-                }}
+                key={field.id}
+                ref={(el) => { if (el) itemRefs.current.set(field.id, el); else itemRefs.current.delete(field.id); }}
+                className={`field-config-item ${isDragging ? "is-dragging" : ""} ${getDragOverClass(field.id)}`}
+                style={getDragTransform(field.id)}
               >
-                <DragIcon />
-              </div>
-
-              {/* Field icon */}
-              <div className="field-config-icon">
-                <FieldTypeIcon type={field.type} />
-              </div>
-
-              {/* Field name */}
-              <span className={`field-config-name ${isHidden ? "is-hidden" : ""}`}>
-                {field.name}
-              </span>
-
-              {/* Lock icon for primary, eye toggle for others */}
-              {isPrimary ? (
-                <div className="field-config-lock">
-                  <LockIcon />
-                </div>
-              ) : (
-                <button
-                  className={`field-config-visibility ${isHidden ? "is-hidden" : ""}`}
-                  onClick={() => onToggleVisibility(field.id)}
-                  title={isHidden ? "Show field" : "Hide field"}
+                {/* Drag handle */}
+                <div
+                  className={`field-config-drag ${dragDisabled ? "disabled" : ""}`}
+                  onMouseDown={(e) => {
+                    if (!dragDisabled) handleDragStart(e, field.id);
+                  }}
                 >
-                  {isHidden ? <InvisibleIcon /> : <VisibleIcon />}
-                </button>
-              )}
-            </div>
-          );
-        })}
+                  <DragIcon />
+                </div>
+
+                {/* Field icon */}
+                <div className="field-config-icon">
+                  <FieldTypeIcon type={field.type} />
+                </div>
+
+                {/* Field name */}
+                <span className={`field-config-name ${isHidden ? "is-hidden" : ""}`}>
+                  {field.name}
+                </span>
+
+                {/* Lock icon for primary, eye toggle for others */}
+                {isPrimary ? (
+                  <div className="field-config-lock">
+                    <LockIcon />
+                  </div>
+                ) : (
+                  <button
+                    className={`field-config-visibility ${isHidden ? "is-hidden" : ""}`}
+                    onClick={() => onToggleVisibility(field.id)}
+                    title={isHidden ? "Show field" : "Hide field"}
+                  >
+                    {isHidden ? <InvisibleIcon /> : <VisibleIcon />}
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

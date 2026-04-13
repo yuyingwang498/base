@@ -1,0 +1,63 @@
+/* ─── Generic SearchInput component ─── */
+.search-input {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid #DEE0E3;
+  border-radius: 6px;
+  padding: 0 8px;
+  gap: 6px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+
+.search-input:focus-within {
+  border-color: var(--color-primary);
+}
+
+.search-input-icon {
+  flex-shrink: 0;
+  color: #8F959E;
+}
+
+.search-input:focus-within .search-input-icon {
+  color: var(--color-primary);
+}
+
+.search-input-field {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  line-height: 22px;
+}
+
+.search-input-field::placeholder {
+  color: #8F959E;
+}
+
+.search-input-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #8F959E;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+.search-input-clear:hover {
+  background: #F5F6F7;
+  color: #2B2F36;
+}
