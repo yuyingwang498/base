@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
 import "./TableView.css";
 
@@ -521,6 +521,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 const MIN_COL_WIDTH = 60;
 
 // ─────────── Main TableView ───────────
+export interface TableViewHandle {
+  selectAndScrollToField: (fieldId: string) => void;
+}
+
 const COL_WIDTHS_KEY = "col_widths_v1";
 
 function loadColWidths(): Record<string, number> {
@@ -536,7 +540,7 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-export default function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder }: Props) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColId, setSelectedColId] = useState<string | null>(null);
@@ -555,6 +559,18 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
   const headerRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const dragRef = useRef<DragState | null>(null);
   const justDraggedRef = useRef(false);
+
+  // Expose imperative methods to parent
+  useImperativeHandle(ref, () => ({
+    selectAndScrollToField(fieldId: string) {
+      setSelectedColId(fieldId);
+      // Scroll the column header into view
+      const th = headerRefs.current.get(fieldId);
+      if (th) {
+        th.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      }
+    },
+  }), []);
 
   // Persist column widths to localStorage
   useEffect(() => {
@@ -898,7 +914,9 @@ export default function TableView({ fields, records, onCellChange, onDeleteField
       )}
     </div>
   );
-}
+});
+
+export default TableView;
 
 function FieldIcon({ type }: { type: string }) {
   switch (type) {

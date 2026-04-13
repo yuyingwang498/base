@@ -3,7 +3,7 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ViewTabs from "./components/ViewTabs";
 import Toolbar from "./components/Toolbar";
-import TableView from "./components/TableView/index";
+import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
@@ -25,6 +25,7 @@ export default function App() {
   const filterBtnRef = useRef<HTMLButtonElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
+  const tableViewRef = useRef<TableViewHandle>(null);
 
   // View-level field order & visibility
   const [viewFieldOrder, setViewFieldOrder] = useState<string[]>([]);
@@ -175,6 +176,11 @@ export default function App() {
     });
   }, [persistHiddenFields]);
 
+  // Handler: select and scroll to a field from FieldConfigPanel
+  const handleSelectField = useCallback((fieldId: string) => {
+    tableViewRef.current?.selectAndScrollToField(fieldId);
+  }, []);
+
   // Pure client-side filtering — each user's filter is local, no server calls
   const displayRecords = useMemo(() => {
     if (filter.conditions.length === 0) return allRecords;
@@ -260,6 +266,7 @@ export default function App() {
           />
           <div className="app-content">
             <TableView
+              ref={tableViewRef}
               fields={visibleOrderedFields}
               records={displayRecords}
               onCellChange={handleCellChange}
@@ -285,6 +292,7 @@ export default function App() {
                 hiddenFields={viewHiddenFields}
                 onFieldOrderChange={handleFieldOrderChange}
                 onToggleVisibility={handleToggleFieldVisibility}
+                onSelectField={handleSelectField}
                 onClose={() => setFieldConfigOpen(false)}
                 anchorRef={customizeFieldBtnRef}
               />

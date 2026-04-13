@@ -20,14 +20,34 @@
   font-size: 13px;
   font-weight: 500;
   color: #646A73;
-  border-bottom: 1px solid #F0F1F3;
   flex-shrink: 0;
 }
 
-/* Search box between header and list */
+/* Search box between header and list — divider-separated row style */
 .field-config-search {
-  padding: 8px 8px 4px;
   flex-shrink: 0;
+  border-top: 1px solid #F0F1F3;
+  border-bottom: 1px solid #F0F1F3;
+}
+
+.field-config-search .search-input {
+  border: none;
+  border-radius: 0;
+  height: 40px;
+  padding: 0 12px;
+}
+
+.field-config-search .search-input:hover {
+  background: #F5F6F7;
+}
+
+.field-config-search .search-input:focus-within {
+  border-color: transparent;
+  background: #F5F6F7;
+}
+
+.field-config-search .search-input:focus-within .search-input-icon {
+  color: #8F959E;
 }
 
 .field-config-list {
@@ -125,6 +145,15 @@
 
 .field-config-name.is-hidden {
   color: #8F959E;
+}
+
+.field-config-name.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.field-config-name.clickable:hover {
+  color: var(--color-primary);
 }
 
 /* Lock icon (for primary field) — same box as visibility toggle for alignment */

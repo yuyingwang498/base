@@ -8,6 +8,7 @@ interface Props {
   hiddenFields: string[];         // currently hidden field IDs
   onFieldOrderChange: (newOrder: string[]) => void;
   onToggleVisibility: (fieldId: string) => void;
+  onSelectField?: (fieldId: string) => void;
   onClose: () => void;
   anchorRef: RefObject<HTMLButtonElement | null>;
 }
@@ -24,6 +25,7 @@ export default function FieldConfigPanel({
   hiddenFields,
   onFieldOrderChange,
   onToggleVisibility,
+  onSelectField,
   onClose,
   anchorRef,
 }: Props) {
@@ -211,8 +213,13 @@ export default function FieldConfigPanel({
                   <FieldTypeIcon type={field.type} />
                 </div>
 
-                {/* Field name */}
-                <span className={`field-config-name ${isHidden ? "is-hidden" : ""}`}>
+                {/* Field name — click to select & scroll to column */}
+                <span
+                  className={`field-config-name ${isHidden ? "is-hidden" : ""} ${!isHidden && onSelectField ? "clickable" : ""}`}
+                  onClick={() => {
+                    if (!isHidden && onSelectField) onSelectField(field.id);
+                  }}
+                >
                   {field.name}
                 </span>
 
