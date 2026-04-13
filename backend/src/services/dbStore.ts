@@ -482,7 +482,7 @@ export async function loadTable(table: Table): Promise<void> {
     update: {
       name: table.name,
       fields: table.fields as any,
-      views: table.views as any,
+      // Do NOT overwrite views on update — preserve user's fieldOrder, hiddenFields, filters
       autoNumberCounters: table.autoNumberCounters as any,
     },
     create: {
