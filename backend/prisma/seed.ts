@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { mockTable } from "../src/mockData.js";
 import { connectDB, loadTable, disconnectDB } from "../src/services/dbStore.js";
 
