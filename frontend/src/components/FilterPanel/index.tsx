@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, forwardRef } from "react";
 import CustomSelect from "./CustomSelect";
 import { Field, FilterCondition, FilterLogic, FilterOperator, FilterValue, ViewFilter, AIGenerateStatus } from "../../types";
 import { generateFilter } from "../../api";
+import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import FilterRow from "./FilterRow";
 import "./FilterPanel.css";
 import { v4 as uuidv4 } from "./uuid";
@@ -26,6 +27,62 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const conditionsRef = useRef<HTMLDivElement>(null);
+
+  // ── Voice input ──
+  const queryBeforeVoiceRef = useRef("");
+  const { isSupported: speechSupported, isListening, start: startSpeech, stop: stopSpeech } = useSpeechRecognition({
+    lang: "zh-CN",
+    onResult(text) {
+      setQuery(queryBeforeVoiceRef.current + text);
+    },
+  });
+
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      stopSpeech();
+    } else {
+      queryBeforeVoiceRef.current = query;
+      startSpeech();
+    }
+  }, [isListening, query, startSpeech, stopSpeech]);
+
+  // Long-press spacebar to enter voice input
+  const spaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spaceTriggeredRef = useRef(false);
+
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
+
+    // Long-press spacebar detection
+    if (e.key === " " && speechSupported && !isListening && !showGenerating) {
+      if (!spaceTimerRef.current) {
+        spaceTimerRef.current = setTimeout(() => {
+          spaceTriggeredRef.current = true;
+          e.preventDefault();
+          queryBeforeVoiceRef.current = query;
+          startSpeech();
+        }, 500);
+      }
+      return; // Don't process Enter/Escape while space is held
+    }
+
+    if (e.key === "Enter") handleSubmit();
+    if (e.key === "Escape") onClose();
+  };
+
+  const handleInputKeyUp = (e: React.KeyboardEvent) => {
+    if (e.key === " ") {
+      if (spaceTimerRef.current) {
+        clearTimeout(spaceTimerRef.current);
+        spaceTimerRef.current = null;
+      }
+      if (spaceTriggeredRef.current) {
+        spaceTriggeredRef.current = false;
+        e.preventDefault();
+        stopSpeech();
+      }
+    }
+  };
 
   // Center panel horizontally relative to anchor button
   useEffect(() => {
@@ -74,12 +131,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
       },
     });
   }, [query, aiStatus, tableId, filter, onFilterChange]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === "Enter") handleSubmit();
-    if (e.key === "Escape") onClose();
-  };
 
   const handleConditionChange = (id: string, updated: Partial<FilterCondition>) => {
     const conditions = filter.conditions.map((c) =>
@@ -162,20 +213,32 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
               className={`fp-ai-input ${echoQuery && !query ? "echo" : ""}`}
               type="text"
               value={query}
+              readOnly={isListening}
               onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setEchoQuery(""); }}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleInputKeyDown}
+              onKeyUp={handleInputKeyUp}
               placeholder={echoQuery || placeholder}
             />
           )}
         </div>
+        {speechSupported && !showGenerating && (
+          <button
+            className={`fp-ai-mic ${isListening ? "listening" : ""}`}
+            onClick={toggleVoice}
+            title={isListening ? "Stop recording" : "Voice input"}
+          >
+            <MicIcon />
+            {isListening && <span className="fp-mic-pulse" />}
+          </button>
+        )}
         {(query || echoQuery) && !showGenerating && (
-          <button className="fp-ai-clear" onClick={handleClearAi} title="Clear">
+          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title="Clear">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         )}
-        {query.trim() && !showGenerating && (
+        {query.trim() && !showGenerating && !isListening && (
           <button className="fp-ai-send" onClick={handleSubmit} title="Submit">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 20V4M5 11l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -280,5 +343,15 @@ function LoadingDots() {
     <span className="loading-dots">
       <span>.</span><span>.</span><span>.</span>
     </span>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <rect x="9" y="2" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M12 18v4M9 22h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
