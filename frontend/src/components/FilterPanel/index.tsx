@@ -77,6 +77,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   }, [query, aiStatus, tableId, filter, onFilterChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter") handleSubmit();
     if (e.key === "Escape") onClose();
   };

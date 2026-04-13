@@ -909,7 +909,7 @@ async function callResponsesAPI(
     model: ARK_MODEL,
     input,
     max_output_tokens: 4096,
-    temperature: 0,
+    temperature: 0.1,
     stream: false,
     thinking: { type: "disabled" },
   };
@@ -1041,7 +1041,7 @@ export async function generateFilter(
       existingFilter: req.existingFilter || null,
       apiParams: {
         max_output_tokens: 4096,
-        temperature: 0,
+        temperature: 0.1,
         stream: false,
         thinking: { type: "disabled" },
         tools: TOOL_DEFINITIONS,
@@ -1066,7 +1066,7 @@ export async function generateFilter(
           model: ARK_MODEL,
           input,
           max_output_tokens: 4096,
-          temperature: 0,
+          temperature: 0.1,
           stream: false,
           thinking: { type: "disabled" },
           tools: TOOL_DEFINITIONS,
