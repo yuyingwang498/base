@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable } from "./services/dbStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,9 +34,14 @@ async function start() {
   await connectDB();
   console.log("Connected to PostgreSQL");
 
-  // Seed mock data (upsert — safe to run repeatedly)
-  await loadTable(mockTable);
-  console.log("Mock data loaded");
+  // Seed mock data only if the table doesn't exist yet
+  const existing = await getTable(mockTable.id);
+  if (!existing) {
+    await loadTable(mockTable);
+    console.log("Mock data seeded (first run)");
+  } else {
+    console.log("Table already exists, skipping seed");
+  }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AI Filter running on http://0.0.0.0:${PORT}`);
