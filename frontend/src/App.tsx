@@ -494,7 +494,7 @@ export default function App() {
   }, [deleteProtection, executeDelete]);
 
   // ── Batch clear cells (Delete key on selected cells) ──
-  const executeClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
+  const executeClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>, toastLabel?: string) => {
     const recordMap = new Map(allRecords.map(r => [r.id, r]));
     const changes: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> = [];
     for (const cell of cells) {
@@ -534,10 +534,8 @@ export default function App() {
         .catch(err => console.warn("Failed to persist cell clear:", err));
     }
 
-    toast.success(
-      `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`,
-      { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } },
-    );
+    const msg = toastLabel ?? `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`;
+    toast.success(msg, { duration: 5000, action: { label: "Undo", onClick: () => performUndo() } });
   }, [allRecords, pushUndo, toast, performUndo]);
 
   // Cell clearing (from cell range selection) always executes directly, undo is sufficient
@@ -550,7 +548,8 @@ export default function App() {
     if (deleteProtection) {
       setConfirmDialog({ open: true, type: "rowCells", recordIds: [], fieldIds: [], cellsToClear: cells });
     } else {
-      executeClearCells(cells);
+      const rowCount = new Set(cells.map(c => c.recordId)).size;
+      executeClearCells(cells, `Cleared ${rowCount} record${rowCount > 1 ? "s" : ""}`);
       tableViewRef.current?.clearRowSelection();
     }
   }, [deleteProtection, executeClearCells]);
@@ -569,8 +568,13 @@ export default function App() {
       const isRowCells = confirmDialog.type === "rowCells";
       const cells = confirmDialog.cellsToClear;
       setConfirmDialog(reset);
-      executeClearCells(cells);
-      if (isRowCells) tableViewRef.current?.clearRowSelection();
+      if (isRowCells) {
+        const rowCount = new Set(cells.map(c => c.recordId)).size;
+        executeClearCells(cells, `Cleared ${rowCount} record${rowCount > 1 ? "s" : ""}`);
+        tableViewRef.current?.clearRowSelection();
+      } else {
+        executeClearCells(cells);
+      }
     }
   }, [confirmDialog, executeDelete, executeDeleteFields, executeClearCells]);
 
@@ -658,7 +662,7 @@ export default function App() {
         open={confirmDialog.open}
         title={
           confirmDialog.type === "fields" ? "Delete Fields"
-          : confirmDialog.type === "rowCells" ? "清空记录单元格"
+          : confirmDialog.type === "rowCells" ? "Clear Records"
           : confirmDialog.type === "cells" ? "Clear Cells"
           : "Delete Records"
         }
@@ -668,13 +672,13 @@ export default function App() {
             : confirmDialog.type === "rowCells"
             ? (() => {
                 const rowCount = new Set(confirmDialog.cellsToClear.map(c => c.recordId)).size;
-                return `确定要清空 ${rowCount} 条记录的所有单元格吗？此操作可撤销。`;
+                return `Are you sure you want to clear all cells of ${rowCount} record${rowCount > 1 ? "s" : ""}? This action can be undone.`;
               })()
             : confirmDialog.type === "cells"
             ? `Are you sure you want to clear ${confirmDialog.cellsToClear.length} cell${confirmDialog.cellsToClear.length > 1 ? "s" : ""}? This action can be undone.`
             : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
         }
-        confirmLabel={confirmDialog.type === "rowCells" ? "清空" : confirmDialog.type === "cells" ? "Clear" : "Delete"}
+        confirmLabel={confirmDialog.type === "rowCells" || confirmDialog.type === "cells" ? "Clear" : "Delete"}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={handleConfirmDelete}
