@@ -5,6 +5,8 @@ export type FieldType =
   | "MultiSelect"
   | "User"
   | "DateTime"
+  | "CreatedTime"
+  | "ModifiedTime"
   | "Checkbox"
   | "AutoNumber";
 
