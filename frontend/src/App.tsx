@@ -34,8 +34,19 @@ export default function App() {
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
   const tableViewRef = useRef<TableViewHandle>(null);
 
-  // Delete protection & undo
-  const [deleteProtection, setDeleteProtection] = useState(true);
+  // Delete protection & undo (document-level, persisted in localStorage)
+  const DELETE_PROTECTION_KEY = "doc_delete_protection";
+  const [deleteProtection, setDeleteProtectionRaw] = useState(() => {
+    const stored = localStorage.getItem(DELETE_PROTECTION_KEY);
+    return stored === null ? true : stored === "true";
+  });
+  const setDeleteProtection = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+    setDeleteProtectionRaw(prev => {
+      const next = typeof val === "function" ? val(prev) : val;
+      localStorage.setItem(DELETE_PROTECTION_KEY, String(next));
+      return next;
+    });
+  }, []);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     type: "records" | "fields";
