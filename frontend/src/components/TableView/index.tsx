@@ -16,6 +16,7 @@ interface Props {
   fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
   onDeleteRecords?: (recordIds: string[]) => void;
   onClearCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
+  onClearRowCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
 }
 
 interface CellRange {
@@ -567,7 +568,7 @@ function loadColWidths(): Record<string, number> {
 
 const CELL_DRAG_THRESHOLD = 4;
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
@@ -837,10 +838,20 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         const currentSelectedRowIds = selectedRowIdsRef.current;
         const currentCellRange = cellRangeRef.current;
 
-        // Priority 1: rows selected via checkbox → delete rows (goes through safety delete)
+        // Priority 1: rows selected via checkbox → clear all cells of those rows (safety delete controlled)
         if (currentSelectedRowIds.size > 0) {
           e.preventDefault();
-          onDeleteRecords?.([...currentSelectedRowIds]);
+          const cells: Array<{ recordId: string; fieldId: string }> = [];
+          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
+          for (let r = 0; r < records.length; r++) {
+            if (!currentSelectedRowIds.has(records[r].id)) continue;
+            for (let c = 0; c < visibleFields.length; c++) {
+              const field = visibleFields[c];
+              if (readOnlyTypes.has(field.type)) continue;
+              cells.push({ recordId: records[r].id, fieldId: field.id });
+            }
+          }
+          if (cells.length > 0) onClearRowCells?.(cells);
           return;
         }
         // Priority 2: cell range selected → clear cells directly (no confirmation)
@@ -872,7 +883,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [editing, records, visibleFields, onClearCells, onDeleteRecords]);
+  }, [editing, records, visibleFields, onClearCells, onClearRowCells]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {

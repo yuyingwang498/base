@@ -52,7 +52,7 @@ export default function App() {
   }, []);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
-    type: "records" | "fields" | "cells";
+    type: "records" | "fields" | "cells" | "rowCells";
     recordIds: string[];
     fieldIds: string[];
     cellsToClear: Array<{ recordId: string; fieldId: string }>;
@@ -540,9 +540,18 @@ export default function App() {
     );
   }, [allRecords, pushUndo, toast, performUndo]);
 
-  // Cell clearing always executes directly (no safety delete confirmation), undo is sufficient
+  // Cell clearing (from cell range selection) always executes directly, undo is sufficient
   const handleClearCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
     executeClearCells(cells);
+  }, [executeClearCells]);
+
+  // Row cell clearing (from checkbox selection + Delete key) goes through safety delete
+  const handleClearRowCells = useCallback((cells: Array<{ recordId: string; fieldId: string }>) => {
+    if (deleteProtection) {
+      setConfirmDialog({ open: true, type: "rowCells", recordIds: [], fieldIds: [], cellsToClear: cells });
+    } else {
+      executeClearCells(cells);
+    }
   }, [deleteProtection, executeClearCells]);
 
   const handleConfirmDelete = useCallback(() => {
@@ -555,7 +564,7 @@ export default function App() {
       const ids = confirmDialog.fieldIds;
       setConfirmDialog(reset);
       executeDeleteFields(ids);
-    } else if (confirmDialog.type === "cells") {
+    } else if (confirmDialog.type === "cells" || confirmDialog.type === "rowCells") {
       const cells = confirmDialog.cellsToClear;
       setConfirmDialog(reset);
       executeClearCells(cells);
@@ -615,6 +624,7 @@ export default function App() {
               fieldOrder={viewFieldOrder}
               onDeleteRecords={handleDeleteRecords}
               onClearCells={handleClearCells}
+              onClearRowCells={handleClearRowCells}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -645,17 +655,22 @@ export default function App() {
         open={confirmDialog.open}
         title={
           confirmDialog.type === "fields" ? "Delete Fields"
-          : confirmDialog.type === "cells" ? "Clear Cells"
+          : confirmDialog.type === "cells" || confirmDialog.type === "rowCells" ? "Clear Cells"
           : "Delete Records"
         }
         message={
           confirmDialog.type === "fields"
             ? `Are you sure you want to delete ${confirmDialog.fieldIds.length} field${confirmDialog.fieldIds.length > 1 ? "s" : ""}? All data in ${confirmDialog.fieldIds.length > 1 ? "these fields" : "this field"} will be removed. This action can be undone.`
+            : confirmDialog.type === "rowCells"
+            ? (() => {
+                const rowCount = new Set(confirmDialog.cellsToClear.map(c => c.recordId)).size;
+                return `Are you sure you want to clear all cells of ${rowCount} record${rowCount > 1 ? "s" : ""}? This action can be undone.`;
+              })()
             : confirmDialog.type === "cells"
             ? `Are you sure you want to clear ${confirmDialog.cellsToClear.length} cell${confirmDialog.cellsToClear.length > 1 ? "s" : ""}? This action can be undone.`
             : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
         }
-        confirmLabel={confirmDialog.type === "cells" ? "Clear" : "Delete"}
+        confirmLabel={confirmDialog.type === "cells" || confirmDialog.type === "rowCells" ? "Clear" : "Delete"}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={handleConfirmDelete}
