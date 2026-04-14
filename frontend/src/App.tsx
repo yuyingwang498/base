@@ -8,7 +8,7 @@ import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord } from "./api";
 import { useToast } from "./components/Toast/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
@@ -262,11 +262,15 @@ export default function App() {
 
     pushUndo({ type: "cellEdit", recordId, fieldId, oldValue, newValue: value });
 
+    // Optimistic update
     setAllRecords((prev) =>
       prev.map((r) =>
         r.id === recordId ? { ...r, cells: { ...r.cells, [fieldId]: value } } : r
       )
     );
+    // Persist to backend
+    updateRecord(TABLE_ID, recordId, { [fieldId]: value })
+      .catch(err => console.warn("Failed to persist cell change:", err));
   }, [allRecords, pushUndo]);
 
   // ── Undo helper (multi-step stack, max 20) ──
@@ -324,17 +328,31 @@ export default function App() {
             : r
         );
       });
+      // Persist undo to backend
+      updateRecord(TABLE_ID, item.recordId, { [item.fieldId]: item.oldValue })
+        .catch(err => console.warn("Failed to persist cell undo:", err));
     } else if (item.type === "cellBatchClear") {
       // Restore all cleared cells to their old values
+      const restoreMap = new Map<string, Record<string, any>>();
       setAllRecords(prev =>
         prev.map(r => {
           const cellChanges = item.changes.filter(c => c.recordId === r.id);
           if (cellChanges.length === 0) return r;
           const newCells = { ...r.cells };
-          for (const c of cellChanges) newCells[c.fieldId] = c.oldValue;
+          const restoreCells: Record<string, any> = {};
+          for (const c of cellChanges) {
+            newCells[c.fieldId] = c.oldValue;
+            restoreCells[c.fieldId] = c.oldValue;
+          }
+          restoreMap.set(r.id, restoreCells);
           return { ...r, cells: newCells };
         })
       );
+      // Persist undo to backend
+      for (const [recordId, cells] of restoreMap) {
+        updateRecord(TABLE_ID, recordId, cells)
+          .catch(err => console.warn("Failed to persist batch cell undo:", err));
+      }
     }
 
     setCanUndo(undoStackRef.current.length > 0);
@@ -490,20 +508,31 @@ export default function App() {
 
     pushUndo({ type: "cellBatchClear", changes });
 
-    setAllRecords(prev => {
-      const clearMap = new Map<string, Set<string>>();
-      for (const c of changes) {
-        if (!clearMap.has(c.recordId)) clearMap.set(c.recordId, new Set());
-        clearMap.get(c.recordId)!.add(c.fieldId);
-      }
-      return prev.map(r => {
+    // Group changes by recordId for optimistic update + backend persist
+    const clearMap = new Map<string, Set<string>>();
+    for (const c of changes) {
+      if (!clearMap.has(c.recordId)) clearMap.set(c.recordId, new Set());
+      clearMap.get(c.recordId)!.add(c.fieldId);
+    }
+
+    // Optimistic update
+    setAllRecords(prev =>
+      prev.map(r => {
         const fieldsToClear = clearMap.get(r.id);
         if (!fieldsToClear) return r;
         const newCells = { ...r.cells };
         for (const fId of fieldsToClear) newCells[fId] = null;
         return { ...r, cells: newCells };
-      });
-    });
+      })
+    );
+
+    // Persist to backend (one call per record)
+    for (const [recordId, fieldIds] of clearMap) {
+      const nullCells: Record<string, null> = {};
+      for (const fId of fieldIds) nullCells[fId] = null;
+      updateRecord(TABLE_ID, recordId, nullCells)
+        .catch(err => console.warn("Failed to persist cell clear:", err));
+    }
 
     toast.success(
       `Cleared ${changes.length} cell${changes.length > 1 ? "s" : ""}`,

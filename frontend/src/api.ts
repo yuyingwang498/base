@@ -99,6 +99,19 @@ export async function batchRestoreFields(
   return res.json();
 }
 
+export async function updateRecord(
+  tableId: string,
+  recordId: string,
+  cells: Record<string, any>
+): Promise<TableRecord> {
+  const res = await fetch(`${BASE}/tables/${tableId}/records/${recordId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cells }),
+  });
+  return res.json();
+}
+
 export async function deleteRecords(
   tableId: string,
   recordIds: string[]
