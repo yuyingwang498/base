@@ -551,6 +551,7 @@ export default function App() {
       setConfirmDialog({ open: true, type: "rowCells", recordIds: [], fieldIds: [], cellsToClear: cells });
     } else {
       executeClearCells(cells);
+      tableViewRef.current?.clearRowSelection();
     }
   }, [deleteProtection, executeClearCells]);
 
@@ -565,9 +566,11 @@ export default function App() {
       setConfirmDialog(reset);
       executeDeleteFields(ids);
     } else if (confirmDialog.type === "cells" || confirmDialog.type === "rowCells") {
+      const isRowCells = confirmDialog.type === "rowCells";
       const cells = confirmDialog.cellsToClear;
       setConfirmDialog(reset);
       executeClearCells(cells);
+      if (isRowCells) tableViewRef.current?.clearRowSelection();
     }
   }, [confirmDialog, executeDelete, executeDeleteFields, executeClearCells]);
 
@@ -655,7 +658,8 @@ export default function App() {
         open={confirmDialog.open}
         title={
           confirmDialog.type === "fields" ? "Delete Fields"
-          : confirmDialog.type === "cells" || confirmDialog.type === "rowCells" ? "Clear Cells"
+          : confirmDialog.type === "rowCells" ? "清空记录单元格"
+          : confirmDialog.type === "cells" ? "Clear Cells"
           : "Delete Records"
         }
         message={
@@ -664,13 +668,13 @@ export default function App() {
             : confirmDialog.type === "rowCells"
             ? (() => {
                 const rowCount = new Set(confirmDialog.cellsToClear.map(c => c.recordId)).size;
-                return `Are you sure you want to clear all cells of ${rowCount} record${rowCount > 1 ? "s" : ""}? This action can be undone.`;
+                return `确定要清空 ${rowCount} 条记录的所有单元格吗？此操作可撤销。`;
               })()
             : confirmDialog.type === "cells"
             ? `Are you sure you want to clear ${confirmDialog.cellsToClear.length} cell${confirmDialog.cellsToClear.length > 1 ? "s" : ""}? This action can be undone.`
             : `Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`
         }
-        confirmLabel={confirmDialog.type === "cells" || confirmDialog.type === "rowCells" ? "Clear" : "Delete"}
+        confirmLabel={confirmDialog.type === "rowCells" ? "清空" : confirmDialog.type === "cells" ? "Clear" : "Delete"}
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={handleConfirmDelete}

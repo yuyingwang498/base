@@ -549,6 +549,7 @@ const MIN_COL_WIDTH = 60;
 // ─────────── Main TableView ───────────
 export interface TableViewHandle {
   selectAndScrollToField: (fieldId: string) => void;
+  clearRowSelection: () => void;
 }
 
 const COL_WIDTHS_KEY = "col_widths_v1";
@@ -617,11 +618,13 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   useImperativeHandle(ref, () => ({
     selectAndScrollToField(fieldId: string) {
       setSelectedColIds(new Set([fieldId]));
-      // Scroll the column header into view
       const th = headerRefs.current.get(fieldId);
       if (th) {
         th.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
       }
+    },
+    clearRowSelection() {
+      setSelectedRowIds(new Set());
     },
   }), []);
 
