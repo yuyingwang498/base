@@ -578,8 +578,14 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
 
+  // Refs to always reflect latest state (eliminates stale-closure issues in native event handlers)
+  const selectedRowIdsRef = useRef<Set<string>>(selectedRowIds);
+  selectedRowIdsRef.current = selectedRowIds;
+
   // ── Cell range selection (drag to select) ──
   const [cellRange, setCellRange] = useState<CellRange | null>(null);
+  const cellRangeRef = useRef<CellRange | null>(cellRange);
+  cellRangeRef.current = cellRange;
   const cellDragRef = useRef<{
     startRowIdx: number;
     startColIdx: number;
@@ -817,6 +823,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   }, [editing, cellRange, records, visibleFields, startEdit]);
 
   // ── Keyboard: Delete/Backspace on selected rows or cells, Escape clears selection ──
+  // Uses refs for selectedRowIds and cellRange to guarantee latest state
+  // (eliminates stale-closure race between checkbox click and Delete keydown)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't intercept when typing in a text input/textarea (but allow checkbox)
@@ -825,19 +833,23 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       if (target.tagName === "INPUT" && target.type !== "checkbox") return;
 
       if ((e.key === "Delete" || e.key === "Backspace") && !editing) {
+        // Read latest state from refs (not closure) to avoid stale values
+        const currentSelectedRowIds = selectedRowIdsRef.current;
+        const currentCellRange = cellRangeRef.current;
+
         // Priority 1: rows selected via checkbox → delete rows (goes through safety delete)
-        if (selectedRowIds.size > 0) {
+        if (currentSelectedRowIds.size > 0) {
           e.preventDefault();
-          onDeleteRecords?.([...selectedRowIds]);
+          onDeleteRecords?.([...currentSelectedRowIds]);
           return;
         }
         // Priority 2: cell range selected → clear cells directly (no confirmation)
-        if (cellRange) {
+        if (currentCellRange) {
           e.preventDefault();
-          const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
-          const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
-          const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
-          const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
+          const minRow = Math.min(currentCellRange.startRowIdx, currentCellRange.endRowIdx);
+          const maxRow = Math.max(currentCellRange.startRowIdx, currentCellRange.endRowIdx);
+          const minCol = Math.min(currentCellRange.startColIdx, currentCellRange.endColIdx);
+          const maxCol = Math.max(currentCellRange.startColIdx, currentCellRange.endColIdx);
 
           const cells: Array<{ recordId: string; fieldId: string }> = [];
           const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
@@ -854,13 +866,13 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         }
       }
 
-      if (e.key === "Escape" && cellRange && !editing) {
+      if (e.key === "Escape" && cellRangeRef.current && !editing) {
         setCellRange(null);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [cellRange, editing, records, visibleFields, onClearCells, selectedRowIds, onDeleteRecords]);
+  }, [editing, records, visibleFields, onClearCells, onDeleteRecords]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {
