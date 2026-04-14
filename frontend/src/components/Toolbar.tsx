@@ -11,6 +11,8 @@ interface Props {
   fieldConfigOpen: boolean;
   onCustomizeFieldClick: () => void;
   customizeFieldBtnRef: RefObject<HTMLButtonElement | null>;
+  canUndo?: boolean;
+  onUndo?: () => void;
 }
 
 export default function Toolbar({
@@ -23,6 +25,8 @@ export default function Toolbar({
   fieldConfigOpen,
   onCustomizeFieldClick,
   customizeFieldBtnRef,
+  canUndo,
+  onUndo,
 }: Props) {
   return (
     <div className="toolbar">
@@ -57,7 +61,17 @@ export default function Toolbar({
         <ToolbarBtn icon={<RowHeightIcon />} label="Row Height" />
         <ToolbarBtn icon={<ConditionalColorIcon />} label="Conditional Coloring" />
       </div>
-      <div className="toolbar-right" />
+      <div className="toolbar-right">
+        <button
+          className={`toolbar-undo-btn${canUndo ? "" : " disabled"}`}
+          title="Undo"
+          onClick={() => canUndo && onUndo?.()}
+        >
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+            <path d="M10.8047 6.52876C11.065 6.78911 11.065 7.21122 10.8047 7.47157L8.60939 9.66683H14.6666C17.428 9.66683 19.6666 11.9054 19.6666 14.6668C19.6666 17.4283 17.428 19.6668 14.6666 19.6668H12.3333C11.9651 19.6668 11.6666 19.3684 11.6666 19.0002C11.6666 18.632 11.9651 18.3335 12.3333 18.3335H14.6666C16.6916 18.3335 18.3333 16.6919 18.3333 14.6668C18.3333 12.6418 16.6916 11.0002 14.6666 11.0002H8.60939L10.8047 13.1954C11.065 13.4558 11.065 13.8779 10.8047 14.1382C10.5443 14.3986 10.1222 14.3986 9.86185 14.1382L6.52851 10.8049C6.26816 10.5446 6.26816 10.1224 6.52851 9.86209L9.86185 6.52876C10.1222 6.26841 10.5443 6.26841 10.8047 6.52876Z" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

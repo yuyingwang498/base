@@ -169,6 +169,17 @@ router.post("/:tableId/records/batch-delete", async (req: Request, res: Response
   res.json({ deleted: count });
 });
 
+// POST /api/tables/:tableId/records/batch-create — restore records (for undo)
+router.post("/:tableId/records/batch-create", async (req: Request, res: Response) => {
+  const { records } = req.body;
+  if (!Array.isArray(records)) {
+    res.status(400).json({ error: "records must be an array" });
+    return;
+  }
+  const count = await store.batchCreateRecords(req.params.tableId, records);
+  res.json({ created: count });
+});
+
 // POST /api/tables/:tableId/records/query — filter/sort records
 router.post("/:tableId/records/query", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);

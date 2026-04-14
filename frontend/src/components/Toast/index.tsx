@@ -109,7 +109,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </span>
             <span className="toast-message">{t.message}</span>
             {t.action && (
-              <button className="toast-action" onClick={t.action.onClick}>
+              <button className="toast-action" onClick={() => { t.action!.onClick(); removeToast(t.id); }}>
                 {t.action.label}
               </button>
             )}

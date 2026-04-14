@@ -1,10 +1,45 @@
+import { useState, useRef, useEffect } from "react";
 import "./TopBar.css";
 
 interface Props {
   tableName: string;
+  deleteProtection?: boolean;
+  onDeleteProtectionChange?: (on: boolean) => void;
 }
 
-export default function TopBar({ tableName }: Props) {
+export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [subMenuOpen, setSubMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const subCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          moreBtnRef.current && !moreBtnRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setSubMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const handleMoreClick = () => {
+    if (!menuOpen && moreBtnRef.current) {
+      const rect = moreBtnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setMenuOpen(!menuOpen);
+    if (menuOpen) {
+      setSubMenuOpen(false);
+      if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; }
+    }
+  };
+
   return (
     <div className="topbar">
       {/* Left: nav icons + divider + stacked basic info */}
@@ -121,7 +156,7 @@ export default function TopBar({ tableName }: Props) {
               <path d="M1179.5 25.3821V25.187C1179.5 24.7745 1179.84 24.437 1180.25 24.437H1181.75C1182.16 24.437 1182.5 24.7745 1182.5 25.187V25.3821C1185.09 26.0697 1187 28.4946 1187 31.3806L1187 36.1532H1187.75C1188.16 36.1532 1188.5 36.4889 1188.5 36.9032C1188.5 37.3174 1188.16 37.6532 1187.75 37.6532H1174.25C1173.84 37.6532 1173.5 37.3174 1173.5 36.9032C1173.5 36.4889 1173.84 36.1532 1174.25 36.1532H1175L1175 31.3806C1175 28.4946 1176.91 26.0697 1179.5 25.3821ZM1176.5 36.1532H1185.5L1185.5 31.3827C1185.5 28.7893 1183.49 26.687 1181 26.687C1178.51 26.687 1176.5 28.7893 1176.5 31.3827L1176.5 36.1532ZM1178.56 39.5282C1178.56 39.1139 1178.9 38.7782 1179.31 38.7782H1182.69C1183.1 38.7782 1183.44 39.1139 1183.44 39.5282C1183.44 39.9424 1183.1 40.2782 1182.69 40.2782H1179.31C1178.9 40.2782 1178.56 39.9424 1178.56 39.5282Z" fill="#2B2F36"/>
             </svg>
           </button>
-          <button className="topbar-icon-btn" title="More">
+          <button className="topbar-icon-btn" title="More" ref={moreBtnRef} onClick={handleMoreClick}>
             {/* Figma: Three dots horizontal — lines 760-762 */}
             <svg width="20" height="20" viewBox="1205 22 20 20" fill="none">
               <path d="M1210.12 31.8125C1210.12 32.5374 1209.54 33.125 1208.81 33.125C1208.09 33.125 1207.5 32.5374 1207.5 31.8125C1207.5 31.0876 1208.09 30.5 1208.81 30.5C1209.54 30.5 1210.12 31.0876 1210.12 31.8125Z" fill="#2B2F36"/>
@@ -154,6 +189,56 @@ export default function TopBar({ tableName }: Props) {
         <span className="topbar-divider" />
         <img className="topbar-avatar" src="/avatars/me.jpg" alt="avatar" />
       </div>
+
+      {/* Cascading menu from More button */}
+      {menuOpen && menuPos && (
+        <div className="topbar-menu" ref={menuRef} style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}>
+          <div
+            className="topbar-menu-item has-submenu"
+            onMouseEnter={() => {
+              if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; }
+              setSubMenuOpen(true);
+            }}
+            onMouseLeave={() => {
+              subCloseTimer.current = setTimeout(() => setSubMenuOpen(false), 300);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="topbar-menu-icon">
+              <circle cx="3" cy="8" r="1.5" fill="currentColor"/>
+              <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+              <circle cx="13" cy="8" r="1.5" fill="currentColor"/>
+            </svg>
+            <span className="topbar-menu-label">More</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
+              <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+
+            {/* Submenu */}
+            {subMenuOpen && (
+              <div
+                className="topbar-submenu"
+                onMouseEnter={() => { if (subCloseTimer.current) { clearTimeout(subCloseTimer.current); subCloseTimer.current = null; } }}
+                onMouseLeave={() => { subCloseTimer.current = setTimeout(() => setSubMenuOpen(false), 300); }}
+              >
+                <div
+                  className="topbar-menu-item"
+                  onClick={(e) => { e.stopPropagation(); onDeleteProtectionChange?.(!deleteProtection); }}
+                >
+                  <span className="topbar-menu-label">Safe Delete</span>
+                  <label className="tb-switch" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={deleteProtection}
+                      onChange={(e) => onDeleteProtectionChange?.(e.target.checked)}
+                    />
+                    <span className="tb-switch-track" />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

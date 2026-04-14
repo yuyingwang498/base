@@ -383,6 +383,30 @@ export async function batchDeleteRecords(tableId: string, recordIds: string[]): 
   return result.count;
 }
 
+export async function batchCreateRecords(
+  tableId: string,
+  records: { id: string; cells: Record<string, CellValue>; createdAt: number; updatedAt: number }[]
+): Promise<number> {
+  let created = 0;
+  for (const r of records) {
+    try {
+      await prisma.record.create({
+        data: {
+          id: r.id,
+          tableId,
+          cells: r.cells as any,
+          createdAt: new Date(r.createdAt),
+          updatedAt: new Date(r.updatedAt),
+        },
+      });
+      created++;
+    } catch {
+      // Record might already exist — skip
+    }
+  }
+  return created;
+}
+
 // ─── View ───
 
 export async function getViews(tableId: string): Promise<View[]> {

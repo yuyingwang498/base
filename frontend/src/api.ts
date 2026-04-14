@@ -67,6 +67,30 @@ export async function updateView(
   return res.json();
 }
 
+export async function deleteRecords(
+  tableId: string,
+  recordIds: string[]
+): Promise<{ deleted: number }> {
+  const res = await fetch(`${BASE}/tables/${tableId}/records/batch-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recordIds }),
+  });
+  return res.json();
+}
+
+export async function batchCreateRecords(
+  tableId: string,
+  records: { id: string; cells: Record<string, any>; createdAt: number; updatedAt: number }[]
+): Promise<{ created: number }> {
+  const res = await fetch(`${BASE}/tables/${tableId}/records/batch-create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ records }),
+  });
+  return res.json();
+}
+
 export interface AIGenerateOptions {
   tableId: string;
   query: string;

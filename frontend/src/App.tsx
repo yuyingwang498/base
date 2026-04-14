@@ -8,7 +8,9 @@ import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords } from "./api";
+import { useToast } from "./components/Toast/index";
+import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 
 const TABLE_ID = "tbl_requirements";
@@ -26,6 +28,13 @@ export default function App() {
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const customizeFieldBtnRef = useRef<HTMLButtonElement>(null);
   const tableViewRef = useRef<TableViewHandle>(null);
+
+  // Delete protection & undo
+  const [deleteProtection, setDeleteProtection] = useState(true);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; recordIds: string[] }>({ open: false, recordIds: [] });
+  const undoCacheRef = useRef<{ records: TableRecord[]; indices: number[] } | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const toast = useToast();
 
   // View-level field order & visibility
   const [viewFieldOrder, setViewFieldOrder] = useState<string[]>([]);
@@ -231,6 +240,87 @@ export default function App() {
     }
   }, []);
 
+  // ── Undo helper ──
+  const performUndo = useCallback(() => {
+    const cache = undoCacheRef.current;
+    if (!cache) return;
+    // Restore at original positions
+    setAllRecords(prev => {
+      const arr = [...prev];
+      cache.indices.forEach((idx, i) => {
+        arr.splice(Math.min(idx, arr.length), 0, cache.records[i]);
+      });
+      return arr;
+    });
+    // API restore (silent — UI already restored)
+    batchCreateRecords(TABLE_ID, cache.records.map(r => ({
+      id: r.id,
+      cells: r.cells as Record<string, any>,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }))).catch(err => console.warn("Failed to restore records:", err));
+    undoCacheRef.current = null;
+    setCanUndo(false);
+  }, []);
+
+  // ── Delete records ──
+  const executeDelete = useCallback((recordIds: string[]) => {
+    // Snapshot records and their indices for undo
+    const idSet = new Set(recordIds);
+    const snapRecords: TableRecord[] = [];
+    const snapIndices: number[] = [];
+    allRecords.forEach((r, i) => {
+      if (idSet.has(r.id)) {
+        snapRecords.push(r);
+        snapIndices.push(i);
+      }
+    });
+    undoCacheRef.current = { records: snapRecords, indices: snapIndices };
+    setCanUndo(true);
+
+    // Optimistic removal
+    setAllRecords(prev => prev.filter(r => !idSet.has(r.id)));
+
+    // API call
+    deleteRecords(TABLE_ID, recordIds).catch(() => {
+      // Revert on failure
+      setAllRecords(prev => {
+        const arr = [...prev];
+        snapIndices.forEach((idx, i) => arr.splice(idx, 0, snapRecords[i]));
+        return arr;
+      });
+      toast.error("Failed to delete records");
+      undoCacheRef.current = null;
+      setCanUndo(false);
+    });
+
+    // Toast with undo
+    toast.success(
+      `Deleted ${recordIds.length} record${recordIds.length > 1 ? "s" : ""}`,
+      {
+        duration: 5000,
+        action: {
+          label: "Undo",
+          onClick: () => performUndo(),
+        },
+      }
+    );
+  }, [allRecords, toast, performUndo]);
+
+  const handleDeleteRecords = useCallback((recordIds: string[]) => {
+    if (deleteProtection) {
+      setConfirmDialog({ open: true, recordIds });
+    } else {
+      executeDelete(recordIds);
+    }
+  }, [deleteProtection, executeDelete]);
+
+  const handleConfirmDelete = useCallback(() => {
+    const ids = confirmDialog.recordIds;
+    setConfirmDialog({ open: false, recordIds: [] });
+    executeDelete(ids);
+  }, [confirmDialog.recordIds, executeDelete]);
+
   const isFiltered = filter.conditions.length > 0;
 
   // Dirty = local filter differs from the saved (backend) filter
@@ -240,7 +330,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar tableName="需求管理表" />
+      <TopBar
+        tableName="需求管理表"
+        deleteProtection={deleteProtection}
+        onDeleteProtectionChange={setDeleteProtection}
+      />
       <div className="app-body">
         <Sidebar />
         <div className="app-main">
@@ -263,6 +357,8 @@ export default function App() {
             fieldConfigOpen={fieldConfigOpen}
             onCustomizeFieldClick={() => setFieldConfigOpen((o) => !o)}
             customizeFieldBtnRef={customizeFieldBtnRef}
+            canUndo={canUndo}
+            onUndo={performUndo}
           />
           <div className="app-content">
             <TableView
@@ -274,6 +370,7 @@ export default function App() {
               onFieldOrderChange={handleFieldOrderChange}
               onHideField={handleHideField}
               fieldOrder={viewFieldOrder}
+              onDeleteRecords={handleDeleteRecords}
             />
             {filterPanelOpen && (
               <FilterPanel
@@ -300,6 +397,16 @@ export default function App() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title="Delete Records"
+        message={`Are you sure you want to delete ${confirmDialog.recordIds.length} record${confirmDialog.recordIds.length > 1 ? "s" : ""}? This action can be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDialog({ open: false, recordIds: [] })}
+      />
     </div>
   );
 }

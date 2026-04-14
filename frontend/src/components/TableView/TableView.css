@@ -75,6 +75,15 @@
   background: #F5F6F7;
 }
 
+/* Selected rows: light blue highlight */
+.data-row.row-selected td {
+  background: rgba(20, 86, 240, 0.04);
+}
+
+.data-row.row-selected.row-hovered td {
+  background: rgba(20, 86, 240, 0.08);
+}
+
 /* Hovered row + selected col intersection */
 .data-row.row-hovered td.col-selected {
   background: rgba(20, 86, 240, 0.08);

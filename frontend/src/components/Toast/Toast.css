@@ -99,10 +99,7 @@
   flex-shrink: 0;
 }
 
-.toast-info .toast-action { color: #1456F0; }
-.toast-success .toast-action { color: #32A645; }
-.toast-warning .toast-action { color: #ED6D0C; }
-.toast-error .toast-action { color: #F54A45; }
+.toast-action { color: #1456F0; }
 
 .toast-action:hover { opacity: 0.8; }
 

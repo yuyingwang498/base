@@ -12,6 +12,13 @@ interface Props {
   onFieldOrderChange?: (newOrder: string[]) => void;   // Full fieldOrder (including hidden)
   onHideField?: (fieldId: string) => void;
   fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
+  onDeleteRecords?: (recordIds: string[]) => void;
+}
+
+interface RowContextMenuState {
+  x: number;
+  y: number;
+  recordIds: string[];
 }
 
 interface EditingState {
@@ -540,14 +547,19 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder }, ref) {
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, fieldOrder, onDeleteRecords }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [selectedColId, setSelectedColId] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [rowContextMenu, setRowContextMenu] = useState<RowContextMenuState | null>(null);
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
+
+  // Header checkbox ref for indeterminate state
+  const headerCheckRef = useRef<HTMLInputElement>(null);
 
   // Resize state
   const resizeRef = useRef<{
@@ -571,6 +583,57 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       }
     },
   }), []);
+
+  // Header checkbox: indeterminate state
+  const allSelected = records.length > 0 && selectedRowIds.size === records.length;
+  const someSelected = selectedRowIds.size > 0 && !allSelected;
+  useEffect(() => {
+    if (headerCheckRef.current) headerCheckRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  const handleHeaderCheckChange = useCallback(() => {
+    if (allSelected) setSelectedRowIds(new Set());
+    else setSelectedRowIds(new Set(records.map(r => r.id)));
+  }, [allSelected, records]);
+
+  const handleRowCheckChange = useCallback((recordId: string) => {
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(recordId)) next.delete(recordId);
+      else next.add(recordId);
+      return next;
+    });
+  }, []);
+
+  // Clear selection when records change (e.g. after delete)
+  useEffect(() => {
+    setSelectedRowIds(prev => {
+      const validIds = new Set(records.map(r => r.id));
+      const cleaned = new Set([...prev].filter(id => validIds.has(id)));
+      if (cleaned.size !== prev.size) return cleaned;
+      return prev;
+    });
+  }, [records]);
+
+  // Row context menu handler
+  const handleRowContextMenu = useCallback((e: React.MouseEvent, recordId: string) => {
+    e.preventDefault();
+    let ids: string[];
+    if (selectedRowIds.has(recordId)) {
+      ids = [...selectedRowIds];
+    } else {
+      ids = [recordId];
+    }
+    setRowContextMenu({ x: e.clientX, y: e.clientY, recordIds: ids });
+  }, [selectedRowIds]);
+
+  const handleDeleteRowsClick = useCallback(() => {
+    if (!rowContextMenu) return;
+    const ids = rowContextMenu.recordIds;
+    setRowContextMenu(null);
+    setSelectedRowIds(new Set());
+    onDeleteRecords?.(ids);
+  }, [rowContextMenu, onDeleteRecords]);
 
   // Persist column widths to localStorage
   useEffect(() => {
@@ -601,8 +664,9 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         if (editing) setEditing(null);
         if (selectedColId) setSelectedColId(null);
       }
-      // Close context menu on any click
+      // Close context menus on any click
       setContextMenu(null);
+      setRowContextMenu(null);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -786,7 +850,13 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           <thead>
             <tr>
               <th className="col-index">
-                <input type="checkbox" className="row-checkbox" />
+                <input
+                  type="checkbox"
+                  className="row-checkbox"
+                  ref={headerCheckRef}
+                  checked={allSelected}
+                  onChange={handleHeaderCheckChange}
+                />
               </th>
               {visibleFields.map((f) => (
                 <th
@@ -832,16 +902,24 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
           <tbody>
             {records.map((record, idx) => {
               const isHovered = hoveredRowId === record.id;
+              const isRowSelected = selectedRowIds.has(record.id);
+              const showCheckbox = selectedRowIds.size > 0 || isHovered;
               return (
                 <tr
                   key={record.id}
-                  className={`data-row ${isHovered ? "row-hovered" : ""}`}
+                  className={`data-row ${isHovered ? "row-hovered" : ""} ${isRowSelected ? "row-selected" : ""}`}
                   onMouseEnter={() => setHoveredRowId(record.id)}
                   onMouseLeave={() => setHoveredRowId(null)}
+                  onContextMenu={(e) => handleRowContextMenu(e, record.id)}
                 >
                   <td className="col-index">
-                    {isHovered ? (
-                      <input type="checkbox" className="row-checkbox" />
+                    {showCheckbox ? (
+                      <input
+                        type="checkbox"
+                        className="row-checkbox"
+                        checked={isRowSelected}
+                        onChange={() => handleRowCheckChange(record.id)}
+                      />
                     ) : (
                       <span className="row-number">{idx + 1}</span>
                     )}
@@ -909,6 +987,23 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
               <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>
             Delete field
+          </button>
+        </div>
+      )}
+
+      {/* Context menu for rows (right-click) */}
+      {rowContextMenu && (
+        <div
+          className="field-context-menu"
+          style={{ left: rowContextMenu.x, top: rowContextMenu.y, minWidth: 200 }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button className="field-context-menu-item" onClick={handleDeleteRowsClick}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            {rowContextMenu.recordIds.length === 1 ? "Delete record" : `Delete ${rowContextMenu.recordIds.length} records`}
           </button>
         </div>
       )}
