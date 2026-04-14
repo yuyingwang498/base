@@ -626,11 +626,13 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   }, [someSelected]);
 
   const handleHeaderCheckChange = useCallback(() => {
+    setCellRange(null);
     if (allSelected) setSelectedRowIds(new Set());
     else setSelectedRowIds(new Set(records.map(r => r.id)));
   }, [allSelected, records]);
 
   const handleRowCheckChange = useCallback((recordId: string, shiftKey = false) => {
+    setCellRange(null); // Clear cell selection when selecting rows
     setSelectedRowIds(prev => {
       // Shift+Click: select range from last-clicked row to this row
       if (shiftKey && lastClickedRowRef.current && lastClickedRowRef.current !== recordId) {
@@ -808,9 +810,10 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // ── Keyboard: Delete/Backspace on selected rows or cells, Escape clears selection ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in an input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Don't intercept when typing in a text input/textarea (but allow checkbox)
+      const target = e.target as HTMLInputElement;
+      if (target.tagName === "TEXTAREA") return;
+      if (target.tagName === "INPUT" && target.type !== "checkbox") return;
 
       if ((e.key === "Delete" || e.key === "Backspace") && !editing) {
         // Priority 1: rows selected via checkbox → delete rows (goes through safety delete)
