@@ -121,7 +121,29 @@
 - 遮罩: `rgba(0,0,0,0.4)`
 - 圆角: `12px`
 
-## 8. 交互规范
+## 8. Figma 设计资源
+
+本项目的设计稿和组件库托管在 Figma 上，所有 UI 实现必须以 Figma 设计为准。
+
+### 组件库（桌面端基础组件）
+- **文件**: [UD-03-基础组件-桌面端](https://www.figma.com/design/7rik2X7IeAxfH0qXFklqjb)
+- **File Key**: `7rik2X7IeAxfH0qXFklqjb`
+- **Node ID**: `213:2645`
+- **用途**: 按钮、输入框、下拉框、弹窗、Toast 等所有基础 UI 组件的样式、尺寸、状态定义
+
+### 图标表情库
+- **文件**: [UD-07-图标表情库](https://www.figma.com/design/z27mSnJ9vbBeW6VnkLVAg6)
+- **File Key**: `z27mSnJ9vbBeW6VnkLVAg6`
+- **Node ID**: `113076:66`
+- **用途**: 所有图标的标准设计，包括工具栏图标、状态图标、操作图标等
+
+### 使用规范
+1. **新增或修改 UI 组件时**，必须先从 Figma 组件库获取对应组件的最新设计规范（尺寸、颜色、间距、状态）
+2. **新增或修改图标时**，必须先从 Figma 图标库获取对应图标的 SVG 路径和尺寸
+3. **设计与代码不一致时**，以 Figma 设计稿为准
+4. 通过 Figma MCP 工具（`get_design_context`、`get_screenshot`）获取设计资源
+
+## 9. 交互规范
 
 ### 鼠标交互
 | 交互 | 行为 |

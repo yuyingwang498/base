@@ -9,9 +9,35 @@ Use this skill when implementing any UI component, styling change, or interactio
 - Reviewing CSS changes for consistency
 - Deciding color, spacing, or typography choices
 
+**⚠️ 强制要求**: 每次涉及 UI 组件或图标的新增/修改时，必须先通过 Figma MCP 工具从设计库获取最新设计规范，再进行编码。
+
 ## Design System Reference
 
 Read `docs/design-resources.md` for the complete design token reference (colors, spacing, typography, shadows, border-radius).
+
+## Figma 设计资源（必须使用）
+
+实现任何 UI 变更前，**必须**通过 Figma MCP 工具获取设计规范：
+
+### 组件库
+- **File Key**: `7rik2X7IeAxfH0qXFklqjb` (UD-03-基础组件-桌面端)
+- 包含：按钮、输入框、下拉框、弹窗、Toast 等全部基础组件
+
+### 图标库
+- **File Key**: `z27mSnJ9vbBeW6VnkLVAg6` (UD-07-图标表情库)
+- 包含：所有工具栏、状态、操作图标
+
+### 获取方式
+```
+# 获取组件设计上下文
+use Figma MCP: get_design_context(fileKey="7rik2X7IeAxfH0qXFklqjb", ...)
+
+# 获取图标设计上下文
+use Figma MCP: get_design_context(fileKey="z27mSnJ9vbBeW6VnkLVAg6", ...)
+
+# 获取截图
+use Figma MCP: get_screenshot(fileKey="...", nodeId="...")
+```
 
 ## Core Principles
 
@@ -119,6 +145,8 @@ Right-click menus use `position: fixed` with `e.clientX` / `e.clientY`. Close on
 
 ## Checklist for New UI Work
 
+- [ ] **从 Figma 获取设计规范** — 新增/修改组件前，先通过 Figma MCP 获取最新设计
+- [ ] **从 Figma 获取图标** — 新增/修改图标前，先从图标库获取标准 SVG
 - [ ] Using CSS custom properties (no hardcoded colors)
 - [ ] Text truncation handles long content
 - [ ] Keyboard interaction works (Delete, Escape, Enter, Ctrl+Z)

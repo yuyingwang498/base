@@ -104,6 +104,14 @@ git push origin <branch>
 ssh -i /path/to/key root@163.7.1.94 "cd /root/ai-filter-lark && git pull origin <branch> && npm run build && pm2 restart ai-filter"
 ```
 
+## Figma Design Assets (强制使用)
+每次涉及 UI 组件或图标的新增/修改时，**必须**：
+1. 先激活 UX & Frontend Design Skill (`.claude/skills/ux-frontend-design.md`)
+2. 通过 Figma MCP 工具从以下设计库获取最新规范，再进行编码：
+   - **组件库**: File Key `7rik2X7IeAxfH0qXFklqjb` (UD-03-基础组件-桌面端)
+   - **图标库**: File Key `z27mSnJ9vbBeW6VnkLVAg6` (UD-07-图标表情库)
+3. 设计与代码不一致时，以 Figma 设计稿为准
+
 ## Important
 - Never commit `backend/.env` (contains API keys). Use `.env.example` as template.
 - The `thinking` mode in aiService.ts is set to `disabled` for the Volcano ARK API.
