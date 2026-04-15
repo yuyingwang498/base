@@ -211,7 +211,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           {showGenerating ? (
             <div className="fp-ai-loading">
               <span className="fp-ai-loading-text">
-                Generating filter by &ldquo;{echoQuery}&rdquo;
+                <span className="fp-ai-loading-query">Generating filter by &ldquo;{echoQuery}&rdquo;</span>
                 <LoadingDots />
               </span>
             </div>

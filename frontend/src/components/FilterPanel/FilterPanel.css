@@ -129,9 +129,14 @@
   gap: 2px;
   line-height: 22px;
   min-width: 0;
+}
+
+.fp-ai-loading-query {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .loading-dots span {
