@@ -133,10 +133,13 @@
 
 .fp-ai-loading-query {
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+.loading-dots {
+  flex-shrink: 0;
 }
 
 .loading-dots span {
