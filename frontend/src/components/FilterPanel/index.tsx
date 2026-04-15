@@ -229,6 +229,13 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
             />
           )}
         </div>
+        {(query || echoQuery) && !showGenerating && (
+          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title="Clear">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
         {speechSupported && !showGenerating && (
           <button
             className={`fp-ai-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
@@ -239,13 +246,6 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
             <MicIcon />
             {isListening && !isStopping && <span className="fp-mic-pulse" />}
             {isStopping && <span className="fp-mic-stopping" />}
-          </button>
-        )}
-        {(query || echoQuery) && !showGenerating && (
-          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title="Clear">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
           </button>
         )}
         {query.trim() && !showGenerating && !isListening && !isStopping && (
