@@ -23,6 +23,8 @@ export interface TableChangeEvent {
 
 class TableEventBus extends EventEmitter {
   emitChange(event: TableChangeEvent): void {
+    const listeners = this.listenerCount(`table:${event.tableId}`);
+    console.log(`[EventBus] ${event.type} client=${event.clientId} → ${listeners} subscriber(s)`);
     this.emit(`table:${event.tableId}`, event);
   }
 

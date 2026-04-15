@@ -21,6 +21,7 @@ router.get("/:tableId/events", (req: Request, res: Response) => {
   res.flushHeaders();
 
   // Send connected event
+  console.log(`[SSE] client=${clientId} connected (table=${tableId})`);
   res.write(
     `event: connected\ndata: ${JSON.stringify({ clientId, timestamp: Date.now() })}\n\n`,
   );
@@ -42,6 +43,7 @@ router.get("/:tableId/events", (req: Request, res: Response) => {
 
   // Cleanup on disconnect
   req.on("close", () => {
+    console.log(`[SSE] client=${clientId} disconnected (table=${tableId})`);
     unsubscribe();
     clearInterval(heartbeat);
   });
