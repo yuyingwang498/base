@@ -1,16 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation, setLocale } from "../i18n/index";
 import type { Locale } from "../i18n/index";
+import InlineEdit from "./InlineEdit";
 import "./TopBar.css";
 
 interface Props {
   tableName: string;
+  documentName: string;
   deleteProtection?: boolean;
   onDeleteProtectionChange?: (on: boolean) => void;
+  onRenameTable?: (newName: string) => void;
+  onRenameDocument?: (newName: string) => void;
 }
 
-export default function TopBar({ tableName, deleteProtection = true, onDeleteProtectionChange }: Props) {
+export default function TopBar({ tableName, documentName, deleteProtection = true, onDeleteProtectionChange, onRenameTable, onRenameDocument }: Props) {
   const { t, locale } = useTranslation();
+  const [editingDocName, setEditingDocName] = useState(false);
 
   // ── More button menu ──
   const [menuOpen, setMenuOpen] = useState(false);
@@ -117,12 +122,21 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
             </svg>
             <span className="topbar-crumb-current">
               <svg className="topbar-base-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="14" height="14" rx="3" fill="#FFBA00"/>
+                <rect x="1" y="1" width="14" height="14" rx="3" fill="#3370FF"/>
                 <rect x="3.5" y="4" width="9" height="1.5" rx="0.5" fill="white"/>
                 <rect x="3.5" y="7" width="6" height="1.5" rx="0.5" fill="white"/>
                 <rect x="3.5" y="10" width="7.5" height="1.5" rx="0.5" fill="white"/>
               </svg>
-              {tableName}
+              <InlineEdit
+                value={documentName}
+                isEditing={editingDocName}
+                onStartEdit={() => setEditingDocName(true)}
+                onSave={(name) => {
+                  setEditingDocName(false);
+                  onRenameDocument?.(name);
+                }}
+                onCancelEdit={() => setEditingDocName(false)}
+              />
             </span>
             <button className="topbar-pin-btn" title={t("topbar.pin")}>
               {/* Figma: Pin — line 731 */}
@@ -304,7 +318,6 @@ export default function TopBar({ tableName, deleteProtection = true, onDeletePro
               <path d="M1.5 8h13M2.5 5h11M2.5 11h11" stroke="currentColor" strokeWidth="1.0" strokeLinecap="round"/>
             </svg>
             <span className="topbar-menu-label">{t("topbar.language")}</span>
-            <span className="topbar-menu-value">{locale === "zh" ? t("topbar.langChinese") : t("topbar.langEnglish")}</span>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="topbar-menu-arrow">
               <path d="M4.5 2.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

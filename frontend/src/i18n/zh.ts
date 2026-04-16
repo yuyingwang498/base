@@ -34,7 +34,7 @@ export const zh: TranslationKeys = {
   "toolbar.customizeField": "字段设置",
   "toolbar.viewSettings": "视图配置",
   "toolbar.filter": "筛选",
-  "toolbar.filterCount": "{{count}} 个筛选",
+  "toolbar.filterCount": "{{count}} 筛选",
   "toolbar.groupBy": "分组",
   "toolbar.sort": "排序",
   "toolbar.rowHeight": "行高",
@@ -45,7 +45,7 @@ export const zh: TranslationKeys = {
   "viewTabs.filterConfigured": "已配置筛选",
   "viewTabs.clear": "清除",
   "viewTabs.save": "保存",
-  "viewTabs.addView": "添加视图",
+  "viewTabs.addView": "新建视图",
   "viewTabs.more": "更多",
 
   // FilterPanel
@@ -271,4 +271,10 @@ export const zh: TranslationKeys = {
   "format.date": "日期",
   "format.currency": "货币",
   "format.autoNumber": "自动编号",
+
+  // Context menu
+  "contextMenu.rename": "重命名",
+
+  // Toast (rename)
+  "toast.renameFailed": "重命名失败，修改已回退",
 };

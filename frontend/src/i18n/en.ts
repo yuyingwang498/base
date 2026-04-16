@@ -269,6 +269,12 @@ export const en = {
   "format.date": "Date",
   "format.currency": "Currency",
   "format.autoNumber": "Auto Number",
+
+  // Context menu
+  "contextMenu.rename": "Rename",
+
+  // Toast (rename)
+  "toast.renameFailed": "Rename failed, changes reverted",
 };
 
 export type TranslationKeys = typeof en;

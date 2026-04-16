@@ -9,7 +9,8 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, CLIENT_ID } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, CLIENT_ID } from "./api";
+import type { SidebarItem } from "./components/Sidebar";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
@@ -17,6 +18,7 @@ import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
 
 const TABLE_ID = "tbl_requirements";
+const DOCUMENT_ID = "doc_default";
 
 const MAX_UNDO = 20;
 type CellValue = string | number | boolean | string[] | null;
@@ -31,6 +33,15 @@ export default function App() {
   const [allRecords, setAllRecords] = useState<TableRecord[]>([]);
   const [views, setViews] = useState<View[]>([]);
   const [activeViewId, setActiveViewId] = useState("view_all");
+  const [tableName, setTableName] = useState("需求管理表");
+  const [documentName, setDocumentName] = useState("Default Document");
+  const SIDEBAR_NAMES_KEY = "sidebar_item_names";
+  const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_NAMES_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
   const [filter, setFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [savedFilter, setSavedFilter] = useState<ViewFilter>({ logic: "and", conditions: [] });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -94,16 +105,21 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
 
-  // Load initial data: fields, all records, views
+  // Load initial data: fields, all records, views, table name
   useEffect(() => {
     Promise.all([
       fetchFields(TABLE_ID),
       fetchRecords(TABLE_ID),
       fetchViews(TABLE_ID),
-    ]).then(([f, r, v]) => {
+      fetch("/api/tables").then(r => r.json()) as Promise<Array<{ id: string; name: string }>>,
+      fetchDocument(DOCUMENT_ID).catch(() => null),
+    ]).then(([f, r, v, tables, doc]) => {
       setFields(f);
       setAllRecords(r);
       setViews(v);
+      const tbl = tables.find(t => t.id === TABLE_ID);
+      if (tbl) setTableName(tbl.name);
+      if (doc) setDocumentName(doc.name);
       // Store the initial saved filter from the active view
       const activeView = v.find(view => view.id === "view_all");
       if (activeView) {
@@ -762,11 +778,69 @@ export default function App() {
     setViews(prev => prev.filter(v => v.id !== viewId));
   }, []);
 
+  const handleRemoteTableUpdate = useCallback((changes: { name?: string }) => {
+    if (changes.name) setTableName(changes.name);
+  }, []);
+
+  const handleRemoteDocumentUpdate = useCallback((changes: { documentId: string; name: string }) => {
+    if (changes.documentId === DOCUMENT_ID && changes.name) {
+      setDocumentName(changes.name);
+    }
+  }, []);
+
   const handleFullSync = useCallback((syncFields: Field[], syncRecords: TableRecord[], syncViews: View[]) => {
     setFields(syncFields);
     setAllRecords(syncRecords);
     setViews(syncViews);
   }, []);
+
+  // ── Rename handlers ──
+
+  const handleRenameSidebarItem = useCallback(async (itemId: string, newName: string) => {
+    if (itemId === "table") {
+      const oldName = tableName;
+      setTableName(newName);
+      try {
+        await renameTable(TABLE_ID, newName);
+      } catch {
+        setTableName(oldName);
+        toast.error(t("toast.renameFailed"));
+      }
+    } else {
+      setSidebarNames(prev => {
+        const next = { ...prev, [itemId]: newName };
+        localStorage.setItem(SIDEBAR_NAMES_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [tableName, toast, t]);
+
+  const handleRenameDocument = useCallback(async (newName: string) => {
+    const oldName = documentName;
+    setDocumentName(newName);
+    try {
+      await renameDocument(DOCUMENT_ID, newName);
+    } catch {
+      setDocumentName(oldName);
+      toast.error(t("toast.renameFailed"));
+    }
+  }, [documentName, toast, t]);
+
+  const handleRenameView = useCallback(async (viewId: string, newName: string) => {
+    setViews(prev => prev.map(v => v.id === viewId ? { ...v, name: newName } : v));
+    try {
+      await updateView(viewId, { name: newName });
+    } catch {
+      fetchViews(TABLE_ID).then(setViews);
+      toast.error(t("toast.renameFailed"));
+    }
+  }, [toast, t]);
+
+  const sidebarItems: SidebarItem[] = useMemo(() => [
+    { id: "table", displayName: tableName, active: true },
+    { id: "dashboard", displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false },
+    { id: "workflow", displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false },
+  ], [tableName, sidebarNames, t]);
 
   useTableSync(TABLE_ID, CLIENT_ID, {
     onRecordCreate: handleRemoteRecordCreate,
@@ -782,18 +856,23 @@ export default function App() {
     onViewUpdate: handleRemoteViewUpdate,
     onViewCreate: handleRemoteViewCreate,
     onViewDelete: handleRemoteViewDelete,
+    onTableUpdate: handleRemoteTableUpdate,
+    onDocumentUpdate: handleRemoteDocumentUpdate,
     onFullSync: handleFullSync,
   });
 
   return (
     <div className="app">
       <TopBar
-        tableName="需求管理表"
+        tableName={tableName}
+        documentName={documentName}
         deleteProtection={deleteProtection}
         onDeleteProtectionChange={setDeleteProtection}
+        onRenameTable={(name) => handleRenameSidebarItem("table", name)}
+        onRenameDocument={handleRenameDocument}
       />
       <div className="app-body">
-        <Sidebar />
+        <Sidebar items={sidebarItems} onRenameItem={handleRenameSidebarItem} />
         <div className="app-main">
           <ViewTabs
             views={views}
@@ -803,6 +882,7 @@ export default function App() {
             isFilterDirty={isFilterDirty}
             onSaveView={handleSaveView}
             onClearFilter={handleClearFilter}
+            onRenameView={handleRenameView}
           />
           <Toolbar
             isFiltered={isFiltered}

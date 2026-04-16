@@ -2,6 +2,8 @@ import { EventEmitter } from "events";
 
 export interface TableChangeEvent {
   type:
+    | "document:update"
+    | "table:update"
     | "record:create"
     | "record:update"
     | "record:delete"

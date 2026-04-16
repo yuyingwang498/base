@@ -110,6 +110,30 @@ function toTable(row: { id: string; name: string; fields: unknown; views: unknow
   };
 }
 
+// ─── Document ───
+
+export async function getDocument(id: string): Promise<{ id: string; name: string } | null> {
+  const row = await prisma.document.findUnique({ where: { id } });
+  if (!row) return null;
+  return { id: row.id, name: row.name };
+}
+
+export async function updateDocument(id: string, dto: { name?: string }): Promise<{ id: string; name: string } | null> {
+  const row = await prisma.document.findUnique({ where: { id } });
+  if (!row) return null;
+
+  const data: Record<string, any> = {};
+  if (dto.name !== undefined) {
+    const name = sanitizeName(dto.name);
+    if (name.length < 1 || name.length > 100) return null;
+    data.name = name;
+  }
+  if (Object.keys(data).length === 0) return null;
+
+  const updated = await prisma.document.update({ where: { id }, data });
+  return { id: updated.id, name: updated.name };
+}
+
 // ─── Table ───
 
 export async function listTables(): Promise<Table[]> {
@@ -159,6 +183,23 @@ export async function deleteTable(id: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function updateTable(id: string, dto: { name?: string }): Promise<Table | null> {
+  const row = await prisma.table.findUnique({ where: { id } });
+  if (!row) return null;
+
+  const data: Record<string, any> = {};
+  if (dto.name !== undefined) {
+    const name = sanitizeName(dto.name);
+    if (name.length < 1 || name.length > 100) return null;
+    data.name = name;
+  }
+  if (Object.keys(data).length === 0) return null;
+
+  const updated = await prisma.table.update({ where: { id }, data });
+  const records = await prisma.record.findMany({ where: { tableId: id }, orderBy: { createdAt: "asc" } });
+  return toTable(updated, records.map(toRecord));
 }
 
 // ─── Field ───
