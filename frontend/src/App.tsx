@@ -6,7 +6,7 @@ import Toolbar from "./components/Toolbar";
 import TableView, { TableViewHandle } from "./components/TableView/index";
 import FilterPanel from "./components/FilterPanel/index";
 import FieldConfigPanel from "./components/FieldConfigPanel/index";
-import { AddFieldPopover } from "./components/FieldConfig/AddFieldPopover";
+import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
 import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, CLIENT_ID } from "./api";
@@ -683,6 +683,7 @@ export default function App() {
 
   // Add-field popover state
   const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
+  const fieldSuggestions = useFieldSuggestions(TABLE_ID);
 
   const handleOpenAddField = useCallback((rect: DOMRect) => {
     setAddFieldAnchor(rect);
@@ -943,6 +944,7 @@ export default function App() {
                 anchorRect={addFieldAnchor}
                 onCancel={() => setAddFieldAnchor(null)}
                 onConfirm={handleCreateFieldConfirm}
+                fieldSuggestions={fieldSuggestions}
               />
             )}
           </div>

@@ -177,7 +177,7 @@ export const zh: TranslationKeys = {
 
   // AddFieldPopover
   "addField.fieldTitle": "标题",
-  "addField.fieldTitlePlaceholder": "输入字段标题并 AI 推荐字段",
+  "addField.fieldTitlePlaceholder": "输入字段标题或 AI 推荐字段",
   "addField.aiSuggestions": "AI 推荐字段",
   "addField.refresh": "换一批",
   "addField.aiLoading": "思考中...",

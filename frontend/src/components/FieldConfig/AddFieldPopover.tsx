@@ -15,6 +15,7 @@ interface Props {
   anchorRect: DOMRect | null;
   onCancel: () => void;
   onConfirm: (newField: Field) => void;
+  fieldSuggestions: FieldSuggestionsState;
 }
 
 interface FieldTypeItem { type: FieldType; icon: string; labelKey: string }
@@ -96,18 +97,16 @@ const EMPTY_LOOKUP: LookupConfig = {
 
 const PAGE_SIZE = 4;
 
-// ─── AI Suggestions hook ───
+// ─── AI Suggestions hook (used at App level for pre-loading) ───
 
-function useFieldSuggestions(tableId: string, currentFields: Field[]) {
+export function useFieldSuggestions(tableId: string) {
   const [cache, setCache] = useState<FieldSuggestion[]>([]);
   const [pageIndex, setPageIndex] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [titleQuery, setTitleQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const shownNamesRef = useRef<Set<string>>(new Set());
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchSuggestions = useCallback(async (title?: string) => {
+  const fetchSuggestions = useCallback(async (excludeNames?: string[]) => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -115,7 +114,7 @@ function useFieldSuggestions(tableId: string, currentFields: Field[]) {
     try {
       const res = await suggestFields(
         tableId,
-        { title: title || undefined, excludeNames: [...shownNamesRef.current] },
+        { excludeNames: excludeNames ?? [...shownNamesRef.current] },
         ac.signal,
       );
       if (!ac.signal.aborted) {
@@ -130,29 +129,11 @@ function useFieldSuggestions(tableId: string, currentFields: Field[]) {
     }
   }, [tableId]);
 
-  // Cold start: fetch on mount
+  // Auto-fetch on mount (cold start when table opens)
   useEffect(() => {
     fetchSuggestions();
     return () => { abortRef.current?.abort(); };
   }, [fetchSuggestions]);
-
-  // Debounced title change
-  const onTitleChange = useCallback((title: string) => {
-    setTitleQuery(title);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchSuggestions(title);
-    }, 500);
-  }, [fetchSuggestions]);
-
-  // Title blur — immediate fetch
-  const onTitleBlur = useCallback((title: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (title.trim() && title !== titleQuery) {
-      setTitleQuery(title);
-      fetchSuggestions(title);
-    }
-  }, [fetchSuggestions, titleQuery]);
 
   // Paginated view
   const currentPage = useMemo(() => {
@@ -165,20 +146,24 @@ function useFieldSuggestions(tableId: string, currentFields: Field[]) {
   const refresh = useCallback(() => {
     const nextPage = pageIndex + 1;
     if (nextPage < totalPages) {
-      // Still have cached pages
       setPageIndex(nextPage);
     } else {
-      // Exhausted cache — re-fetch with excludeNames
-      fetchSuggestions(titleQuery || undefined);
+      fetchSuggestions();
     }
-  }, [pageIndex, totalPages, fetchSuggestions, titleQuery]);
+  }, [pageIndex, totalPages, fetchSuggestions]);
 
-  return { suggestions: currentPage, loading, refresh, onTitleChange, onTitleBlur };
+  return { suggestions: currentPage, loading, refresh };
+}
+
+export interface FieldSuggestionsState {
+  suggestions: FieldSuggestion[];
+  loading: boolean;
+  refresh: () => void;
 }
 
 // ─── Main component ───
 
-export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm }: Props) {
+export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onCancel, onConfirm, fieldSuggestions }: Props) {
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [fieldType, setFieldType] = useState<FieldType>("Text");
@@ -190,8 +175,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const fieldTypeCardRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { suggestions, loading: sugLoading, refresh: sugRefresh, onTitleChange, onTitleBlur } =
-    useFieldSuggestions(currentTableId, currentFields);
+  const { suggestions, loading: sugLoading, refresh: sugRefresh } = fieldSuggestions;
 
   useEffect(() => {
     fetchTables().then(setAllTables);
@@ -246,7 +230,6 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
-    onTitleChange(val);
   };
 
   const handleSuggestionClick = (s: FieldSuggestion) => {
@@ -268,24 +251,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="field-popover-body">
-          {/* Title */}
-          <div className="form-row">
-            <label>{t("addField.fieldTitle")}</label>
-            <input
-              className="fc-input"
-              autoFocus
-              placeholder={t("addField.fieldTitlePlaceholder")}
-              value={title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              onBlur={() => onTitleBlur(title)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleConfirm();
-                if (e.key === "Escape") onCancel();
-              }}
-            />
-          </div>
-
-          {/* AI Suggestions */}
+          {/* AI Suggestions (above title) */}
           <div className="form-row">
             <div className="suggest-header">
               <label>{t("addField.aiSuggestions")}</label>
@@ -326,6 +292,22 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                 <span className="suggest-empty">{t("addField.aiLoading")}</span>
               )}
             </div>
+          </div>
+
+          {/* Title */}
+          <div className="form-row">
+            <label>{t("addField.fieldTitle")}</label>
+            <input
+              className="fc-input"
+              autoFocus
+              placeholder={t("addField.fieldTitlePlaceholder")}
+              value={title}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleConfirm();
+                if (e.key === "Escape") onCancel();
+              }}
+            />
           </div>
 
           {/* Field type */}

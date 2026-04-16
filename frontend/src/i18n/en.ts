@@ -175,7 +175,7 @@ export const en = {
 
   // AddFieldPopover
   "addField.fieldTitle": "Title",
-  "addField.fieldTitlePlaceholder": "Enter field title for AI suggestions",
+  "addField.fieldTitlePlaceholder": "Enter field title or AI suggestions",
   "addField.aiSuggestions": "AI Suggestions",
   "addField.refresh": "Refresh",
   "addField.aiLoading": "Thinking...",
