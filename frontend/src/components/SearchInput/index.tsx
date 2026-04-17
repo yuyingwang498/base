@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useTranslation } from "../../i18n/index";
 import "./SearchInput.css";
 
 interface Props {
@@ -14,13 +13,11 @@ interface Props {
 export default function SearchInput({
   value,
   onChange,
-  placeholder,
+  placeholder = "Search...",
   autoFocus = false,
   onEscape,
   className = "",
 }: Props) {
-  const { t } = useTranslation();
-  const resolvedPlaceholder = placeholder || t("search.placeholder");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -57,7 +54,7 @@ export default function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={resolvedPlaceholder}
+        placeholder={placeholder}
       />
       {value && (
         <button

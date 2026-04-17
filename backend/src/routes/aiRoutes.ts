@@ -1,8 +1,6 @@
 import { Router, Request, Response } from "express";
-import * as store from "../services/dbStore.js";
+import * as store from "../services/dataStore.js";
 import { generateFilter } from "../services/aiService.js";
-import { suggestFields } from "../services/fieldSuggestService.js";
-import { generateTableFields } from "../services/tableGenerateService.js";
 import { FilterGenerateRequest } from "../types.js";
 
 const router = Router();
@@ -16,7 +14,7 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  const table = await store.getTable(body.tableId);
+  const table = store.getTable(body.tableId);
   if (!table) {
     res.status(404).json({ error: "Table not found" });
     return;
@@ -43,35 +41,21 @@ router.post("/filter/generate", async (req: Request, res: Response) => {
   res.end();
 });
 
-// POST /api/ai/fields/suggest  — AI field recommendations
-router.post("/fields/suggest", async (req: Request, res: Response) => {
+// POST /api/ai/fields/suggest
+router.post("/fields/suggest", (req: Request, res: Response) => {
   const { tableId, title, excludeNames, forceRefresh } = req.body;
-
   if (!tableId) {
     res.status(400).json({ error: "tableId is required" });
     return;
   }
-
-  const table = await store.getTable(tableId);
-  if (!table) {
-    res.status(404).json({ error: "Table not found" });
-    return;
-  }
-
-  try {
-    const result = await suggestFields({ tableId, title, excludeNames, forceRefresh });
-    res.json(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: message });
-  }
+  const result = store.suggestFields(tableId, { title, excludeNames, forceRefresh });
+  res.json(result);
 });
 
-// POST /api/ai/table/generate  — SSE streaming (AI table structure generation)
-router.post("/table/generate", async (req: Request, res: Response) => {
+// POST /api/ai/table/generate  — SSE streaming
+router.post("/table/generate", (req: Request, res: Response) => {
   const { tableName } = req.body;
-
-  if (!tableName?.trim()) {
+  if (!tableName || typeof tableName !== "string") {
     res.status(400).json({ error: "tableName is required" });
     return;
   }
@@ -87,18 +71,13 @@ router.post("/table/generate", async (req: Request, res: Response) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
-  sendEvent("start", { requestId: `req-${Date.now()}` });
-
-  try {
-    const fields = await generateTableFields(tableName.trim());
-    sendEvent("fields", { fields });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    sendEvent("error", { code: "AI_ERROR", message });
-  }
-
-  res.write("event: done\ndata: {}\n\n");
-  res.end();
+  // Mock table structure generation
+  setTimeout(() => {
+    const result = store.generateTableStructure(tableName);
+    sendEvent("fields", { fields: result.fields });
+    sendEvent("done", {});
+    res.end();
+  }, 1000);
 });
 
 export default router;

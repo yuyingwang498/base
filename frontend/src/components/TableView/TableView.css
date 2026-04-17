@@ -12,9 +12,10 @@
 }
 
 .data-table {
+  width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  /* width is set via inline style: max(sum of col widths, container width) */
+  min-width: 800px;
 }
 
 .data-table thead {
@@ -69,23 +70,14 @@
   background: rgba(20, 86, 240, 0.04);
 }
 
-/* Cell range selection highlight (drag to select) */
-.data-table td.cell-range-selected {
-  background: rgba(20, 86, 240, 0.10) !important;
-}
-
 /* Hover: light gray background on hovered row */
 .data-row.row-hovered td {
   background: #F5F6F7;
 }
 
-/* Selected rows: light blue highlight */
+/* Selected row */
 .data-row.row-selected td {
-  background: rgba(20, 86, 240, 0.04);
-}
-
-.data-row.row-selected.row-hovered td {
-  background: rgba(20, 86, 240, 0.08);
+  background: rgba(20, 86, 240, 0.06);
 }
 
 /* Hovered row + selected col intersection */
@@ -93,10 +85,30 @@
   background: rgba(20, 86, 240, 0.08);
 }
 
+/* Selected + hovered row */
+.data-row.row-selected.row-hovered td {
+  background: rgba(20, 86, 240, 0.1);
+}
+
 .td-editing {
   background: white !important;
   box-shadow: inset 0 0 0 2px var(--color-primary);
   z-index: 5;
+}
+
+/* 选中的单元格样式 */
+.data-table td.cell-selected {
+  background: rgba(20, 86, 240, 0.12) !important;
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+/* 选中单元格与其他选中状态的组合 */
+.data-row.row-hovered td.cell-selected {
+  background: rgba(20, 86, 240, 0.16) !important;
+}
+
+.data-row.row-selected td.cell-selected {
+  background: rgba(20, 86, 240, 0.18) !important;
 }
 
 .th-inner {
@@ -127,12 +139,12 @@
   opacity: 0.4;
 }
 
-/* Figma: first column 44px — width set via <col>, not here (table-layout:fixed ignores th width when col is set) */
+/* Figma: first column 44px — header shows checkbox, data rows show row number (hover → checkbox) */
 .col-index {
+  width: 44px !important;
   text-align: center !important;
   padding: 0 !important;
   cursor: default;
-  border-right: none !important;
 }
 
 .col-index:hover {
@@ -148,7 +160,6 @@
   font-size: 12px;
   color: var(--color-text-placeholder);
   user-select: none;
-  cursor: pointer;
 }
 
 /* Figma columns: name column has stronger divider #BBBFC4 */
@@ -157,22 +168,28 @@
 }
 
 .col-add {
+  width: 136px;
   border-right: none !important;
-  cursor: pointer;
+  cursor: default;
 }
 
 .col-add:hover {
-  background: #F0F1F3 !important;
+  background: #F7F8FA !important;
 }
 
-.col-add-icon {
+.col-add-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
+  border-radius: var(--radius-s);
   color: var(--color-text-secondary);
   margin-left: 12px;
+}
+
+.col-add-btn:hover {
+  background: var(--color-bg-hover);
 }
 
 /* Figma: checkbox 16x16 */
@@ -470,7 +487,7 @@
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-dropdown);
   padding: 4px;
-  width: 180px;
+  min-width: 160px;
 }
 
 .field-context-menu-item {
@@ -488,12 +505,6 @@
   background: none;
   border: none;
   font-family: var(--font-family);
-  white-space: nowrap;
-}
-
-.field-context-menu-item svg {
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
 }
 
 .field-context-menu-item:hover {

@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
-import { useTranslation } from "../../i18n/index";
-import { FieldIcon as FieldIconSvg } from "../FieldConfig/FieldIcons";
 import "./TableView.css";
 
 type CellValue = string | number | boolean | string[] | null;
@@ -11,29 +9,11 @@ interface Props {
   records: TableRecord[];
   onCellChange: (recordId: string, fieldId: string, value: CellValue) => void;
   onDeleteField?: (fieldId: string) => void;
-  onDeleteFields?: (fieldIds: string[]) => void;
   onFieldOrderChange?: (newOrder: string[]) => void;   // Full fieldOrder (including hidden)
   onHideField?: (fieldId: string) => void;
-  onHideFields?: (fieldIds: string[]) => void;
-  fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
   onDeleteRecords?: (recordIds: string[]) => void;
-  onClearCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
-  onClearRowCells?: (cells: Array<{ recordId: string; fieldId: string }>) => void;
-  onAddField?: (anchorRect: DOMRect) => void;
-  onEditField?: (fieldId: string, anchorRect: DOMRect) => void;
-}
-
-interface CellRange {
-  startRowIdx: number;
-  startColIdx: number;
-  endRowIdx: number;
-  endColIdx: number;
-}
-
-interface RowContextMenuState {
-  x: number;
-  y: number;
-  recordIds: string[];
+  onClearCells?: (cleared: Array<{ recordId: string; fieldId: string; oldValue: CellValue }>) => void;
+  fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
 }
 
 interface EditingState {
@@ -41,10 +21,16 @@ interface EditingState {
   fieldId: string;
 }
 
+interface CellSelectionState {
+  recordId: string;
+  fieldId: string;
+}
+
 interface ContextMenuState {
   x: number;
   y: number;
-  fieldIds: string[];
+  fieldId: string;
+  recordId?: string;
 }
 
 interface DragState {
@@ -52,6 +38,14 @@ interface DragState {
   startX: number;
   currentX: number;
   headerRects: Map<string, DOMRect>;
+}
+
+interface CellDragSelectionState {
+  isDragging: boolean;
+  startRecordId: string;
+  startFieldId: string;
+  currentRecordId: string;
+  currentFieldId: string;
 }
 
 // Lark option color palette: maps option.color → { bg, text, dot }
@@ -116,39 +110,8 @@ function UserAvatar({ userId, users, showName = true }: { userId: string; users:
 
 // ─────────── Cell display (read-only) ───────────
 function CellDisplay({ field, value }: { field: Field; value: CellValue }) {
-  // Lookup sentinels first — error states surface as red labels
-  if (field.type === "Lookup" && typeof value === "string" && (value === "#REF!" || value === "#CYCLE!")) {
-    return <span className="cell-text" style={{ color: "#c23b3b", fontWeight: 500 }}>{value}</span>;
-  }
-
   if (value === null || value === undefined || value === "") {
     return <span className="cell-empty" />;
-  }
-
-  // Lookup array values — render as chip list
-  if (field.type === "Lookup" && Array.isArray(value)) {
-    return (
-      <div className="cell-tags">
-        {value.map((v, i) => (
-          <span key={i} className="status-tag" style={{ background: "#F0F2F5", color: "#1f2329" }}>
-            {String(v)}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  // Lookup number/scalar: use number format
-  if (field.type === "Lookup") {
-    const fmt = field.config.lookup?.lookupOutputFormat;
-    if (fmt === "number" && typeof value === "number") {
-      // Round to 2 decimals max, drop trailing zeros
-      return <span className="cell-text">{Math.round((value + Number.EPSILON) * 100) / 100}</span>;
-    }
-    if (fmt === "date" && (typeof value === "number" || typeof value === "string")) {
-      return <span className="cell-text">{formatDate(value as number | string)}</span>;
-    }
-    return <span className="cell-text">{String(value)}</span>;
   }
 
   switch (field.type) {
@@ -208,15 +171,7 @@ function TextEditor({
   const [draft, setDraft] = useState(value === null ? "" : String(value));
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus without selecting all — preserve click position for cursor placement
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.focus();
-    // Move cursor to end instead of selecting all, so user can click to reposition
-    const len = el.value.length;
-    el.setSelectionRange(len, len);
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
 
   const commit = () => {
     const v = draft.trim();
@@ -236,10 +191,7 @@ function TextEditor({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        // Ignore Enter during IME composition (e.g. Chinese input confirming pinyin)
-        if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-          e.preventDefault(); commit();
-        }
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
         if (e.key === "Escape") { e.preventDefault(); onCancel(); }
       }}
     />
@@ -363,7 +315,6 @@ function DateEditor({
   onCommit: (v: CellValue) => void;
   onCancel: () => void;
 }) {
-  const { t } = useTranslation();
   const parsed = value ? new Date(typeof value === "number" ? value : String(value)) : new Date();
   const validDate = isNaN(parsed.getTime()) ? new Date() : parsed;
 
@@ -388,7 +339,10 @@ function DateEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [onCancel]);
 
-  const monthNames = t("table.months").split(",");
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
 
   const prevMonth = () => {
     if (viewMonth === 0) {
@@ -458,7 +412,7 @@ function DateEditor({
         </button>
       </div>
       <div className="date-picker-weekdays">
-        {t("table.weekdayLetters").split(",").map((d, i) => (
+        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
           <span key={i}>{d}</span>
         ))}
       </div>
@@ -513,17 +467,10 @@ function EditableCell({
   onCancel: () => void;
 }) {
   const value = record.cells[field.id] ?? null;
-  const isEditable = field.type !== "AutoNumber" && field.type !== "Lookup";
-
-  const handleDoubleClick = () => {
-    if (isEditable && !editing && field.type !== "Checkbox") onStartEdit();
-  };
+  const isEditable = field.type !== "AutoNumber";
 
   const handleClick = () => {
-    // Checkbox: toggle on single click
-    if (field.type === "Checkbox" && !editing) {
-      onCommit(!value);
-    }
+    if (isEditable && !editing) onStartEdit();
   };
 
   const renderEditor = () => {
@@ -569,7 +516,6 @@ function EditableCell({
     <div
       className={`cell-wrap ${isEditable ? "editable" : ""} ${editing ? "editing" : ""}`}
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
     >
       {editing ? renderEditor() : <CellDisplay field={field} value={value} />}
     </div>
@@ -577,7 +523,6 @@ function EditableCell({
 }
 
 // ─────────── Default column widths ───────────
-const PRIMARY_FIELD_DEFAULT_WIDTH = 280;
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
   fld_name: 220,
   fld_created: 120,
@@ -591,16 +536,9 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
 };
 const MIN_COL_WIDTH = 60;
 
-function getDefaultColWidth(field: { id: string; isPrimary?: boolean }): number {
-  if (DEFAULT_COL_WIDTHS[field.id]) return DEFAULT_COL_WIDTHS[field.id];
-  if (field.isPrimary) return PRIMARY_FIELD_DEFAULT_WIDTH;
-  return 120;
-}
-
 // ─────────── Main TableView ───────────
 export interface TableViewHandle {
   selectAndScrollToField: (fieldId: string) => void;
-  clearRowSelection: () => void;
 }
 
 const COL_WIDTHS_KEY = "col_widths_v1";
@@ -618,54 +556,21 @@ function loadColWidths(): Record<string, number> {
   return { ...DEFAULT_COL_WIDTHS };
 }
 
-const CELL_DRAG_THRESHOLD = 4;
-
-const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onDeleteFields, onFieldOrderChange, onHideField, onHideFields, fieldOrder, onDeleteRecords, onClearCells, onClearRowCells, onAddField, onEditField }, ref) {
-  const { t } = useTranslation();
+const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields, records, onCellChange, onDeleteField, onFieldOrderChange, onHideField, onDeleteRecords, onClearCells, fieldOrder }, ref) {
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  const [selectedColIds, setSelectedColIds] = useState<Set<string>>(new Set());
+  const [selectedColId, setSelectedColId] = useState<string | null>(null);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
   const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [rowContextMenu, setRowContextMenu] = useState<RowContextMenuState | null>(null);
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
-
-  // Track container width for table width calculation
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    setContainerWidth(el.clientWidth);
-    const ro = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Refs to always reflect latest state (eliminates stale-closure issues in native event handlers)
-  const selectedRowIdsRef = useRef<Set<string>>(selectedRowIds);
-  selectedRowIdsRef.current = selectedRowIds;
-
-  // ── Cell range selection (drag to select) ──
-  const [cellRange, setCellRange] = useState<CellRange | null>(null);
-  const cellRangeRef = useRef<CellRange | null>(cellRange);
-  cellRangeRef.current = cellRange;
-  const cellDragRef = useRef<{
-    startRowIdx: number;
-    startColIdx: number;
-    startX: number;
-    startY: number;
-    dragging: boolean;
-  } | null>(null);
-  const justCellDraggedRef = useRef(false);
-
-  // Track last-clicked row for Shift+Click range selection
-  const lastClickedRowRef = useRef<string | null>(null);
-
-  // Header checkbox ref for indeterminate state
-  const headerCheckRef = useRef<HTMLInputElement>(null);
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [selectionAnchor, setSelectionAnchor] = useState<CellSelectionState | null>(null);
+  const [cellDragSelection, setCellDragSelection] = useState<CellDragSelectionState | null>(null);
+  const isDraggingRef = useRef(false);
+  const mouseDownTimeRef = useRef<number>(0);
+  const mouseDownCellRef = useRef<{ recordId: string; fieldId: string } | null>(null);
 
   // Resize state
   const resizeRef = useRef<{
@@ -681,94 +586,14 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   // Expose imperative methods to parent
   useImperativeHandle(ref, () => ({
     selectAndScrollToField(fieldId: string) {
-      setSelectedColIds(new Set([fieldId]));
+      setSelectedColId(fieldId);
+      // Scroll the column header into view
       const th = headerRefs.current.get(fieldId);
       if (th) {
         th.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
       }
     },
-    clearRowSelection() {
-      setSelectedRowIds(new Set());
-    },
   }), []);
-
-  // Header checkbox: indeterminate state
-  const allSelected = records.length > 0 && selectedRowIds.size === records.length;
-  const someSelected = selectedRowIds.size > 0 && !allSelected;
-  useEffect(() => {
-    if (headerCheckRef.current) headerCheckRef.current.indeterminate = someSelected;
-  }, [someSelected]);
-
-  const handleHeaderCheckChange = useCallback(() => {
-    setCellRange(null);
-    if (allSelected) setSelectedRowIds(new Set());
-    else setSelectedRowIds(new Set(records.map(r => r.id)));
-  }, [allSelected, records]);
-
-  const handleRowCheckChange = useCallback((recordId: string, shiftKey = false) => {
-    setCellRange(null); // Clear cell selection when selecting rows
-    setSelectedRowIds(prev => {
-      // Shift+Click: select range from last-clicked row to this row
-      if (shiftKey && lastClickedRowRef.current && lastClickedRowRef.current !== recordId) {
-        const ids = records.map(r => r.id);
-        const anchorIdx = ids.indexOf(lastClickedRowRef.current);
-        const targetIdx = ids.indexOf(recordId);
-        if (anchorIdx !== -1 && targetIdx !== -1) {
-          const from = Math.min(anchorIdx, targetIdx);
-          const to = Math.max(anchorIdx, targetIdx);
-          const rangeIds = ids.slice(from, to + 1);
-          const next = new Set(prev);
-          for (const id of rangeIds) next.add(id);
-          return next;
-        }
-      }
-      // Normal click: toggle single row
-      const next = new Set(prev);
-      if (next.has(recordId)) next.delete(recordId);
-      else next.add(recordId);
-      lastClickedRowRef.current = recordId;
-      return next;
-    });
-  }, [records]);
-
-  // Clear selection when records change (e.g. after delete)
-  useEffect(() => {
-    setSelectedRowIds(prev => {
-      const validIds = new Set(records.map(r => r.id));
-      const cleaned = new Set([...prev].filter(id => validIds.has(id)));
-      if (cleaned.size !== prev.size) return cleaned;
-      return prev;
-    });
-  }, [records]);
-
-  // Row context menu handler
-  const handleRowContextMenu = useCallback((e: React.MouseEvent, recordId: string) => {
-    e.preventDefault();
-    let ids: string[];
-    if (selectedRowIds.has(recordId)) {
-      // Row checkbox selection: use all checked rows
-      ids = [...selectedRowIds];
-    } else if (cellRange) {
-      // Cell range selection: collect all rows covered by the range
-      const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
-      const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
-      ids = [];
-      for (let r = minRow; r <= maxRow; r++) {
-        if (r < records.length) ids.push(records[r].id);
-      }
-    } else {
-      ids = [recordId];
-    }
-    setRowContextMenu({ x: e.clientX, y: e.clientY, recordIds: ids });
-  }, [selectedRowIds, cellRange, records]);
-
-  const handleDeleteRowsClick = useCallback(() => {
-    if (!rowContextMenu) return;
-    const ids = rowContextMenu.recordIds;
-    setRowContextMenu(null);
-    setSelectedRowIds(new Set());
-    onDeleteRecords?.(ids);
-  }, [rowContextMenu, onDeleteRecords]);
 
   // Persist column widths to localStorage
   useEffect(() => {
@@ -779,9 +604,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const visibleFields = fields;
 
   const startEdit = useCallback((recordId: string, fieldId: string) => {
-    if (justCellDraggedRef.current) return;
     setEditing({ recordId, fieldId });
-    setCellRange(null);
   }, []);
 
   const commitEdit = useCallback((recordId: string, fieldId: string, value: CellValue) => {
@@ -793,177 +616,243 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     setEditing(null);
   }, []);
 
+  // 单元格选择相关
+  const getCellKey = useCallback((recordId: string, fieldId: string) => {
+    return `${recordId}-${fieldId}`;
+  }, []);
+
+  const selectCell = useCallback((recordId: string, fieldId: string, shiftKey = false, ctrlKey = false) => {
+    if (shiftKey && selectionAnchor) {
+      // Shift 选择：从锚点到当前位置的矩形区域
+      const anchorRecordIndex = records.findIndex(r => r.id === selectionAnchor.recordId);
+      const anchorFieldIndex = visibleFields.findIndex(f => f.id === selectionAnchor.fieldId);
+      const currentRecordIndex = records.findIndex(r => r.id === recordId);
+      const currentFieldIndex = visibleFields.findIndex(f => f.id === fieldId);
+      
+      if (anchorRecordIndex !== -1 && anchorFieldIndex !== -1 && currentRecordIndex !== -1 && currentFieldIndex !== -1) {
+        const minRecordIndex = Math.min(anchorRecordIndex, currentRecordIndex);
+        const maxRecordIndex = Math.max(anchorRecordIndex, currentRecordIndex);
+        const minFieldIndex = Math.min(anchorFieldIndex, currentFieldIndex);
+        const maxFieldIndex = Math.max(anchorFieldIndex, currentFieldIndex);
+        
+        const newSelectedCells = new Set<string>();
+        for (let r = minRecordIndex; r <= maxRecordIndex; r++) {
+          for (let f = minFieldIndex; f <= maxFieldIndex; f++) {
+            const cellKey = getCellKey(records[r].id, visibleFields[f].id);
+            newSelectedCells.add(cellKey);
+          }
+        }
+        setSelectedCells(newSelectedCells);
+      }
+    } else if (ctrlKey) {
+      // Ctrl 选择：切换单个单元格的选中状态
+      setSelectedCells(prev => {
+        const newSet = new Set(prev);
+        const cellKey = getCellKey(recordId, fieldId);
+        if (newSet.has(cellKey)) {
+          newSet.delete(cellKey);
+        } else {
+          newSet.add(cellKey);
+        }
+        return newSet;
+      });
+      setSelectionAnchor({ recordId, fieldId });
+    } else {
+      // 普通选择：只选中一个单元格
+      const cellKey = getCellKey(recordId, fieldId);
+      setSelectedCells(new Set([cellKey]));
+      setSelectionAnchor({ recordId, fieldId });
+    }
+    // 取消编辑模式
+    if (editing) setEditing(null);
+  }, [records, visibleFields, selectionAnchor, getCellKey, editing]);
+
+  const clearSelectedCells = useCallback(() => {
+    setSelectedCells(new Set());
+    setSelectionAnchor(null);
+  }, []);
+
+  const clearCells = useCallback(() => {
+    if (selectedCells.size === 0) return;
+    
+    // 保存清空之前的值
+    const clearedCellsInfo: Array<{ recordId: string; fieldId: string; oldValue: CellValue }> = [];
+    
+    selectedCells.forEach(cellKey => {
+      const [recordId, fieldId] = cellKey.split('-');
+      const record = records.find(r => r.id === recordId);
+      const oldValue = record?.cells[fieldId] ?? '';
+      clearedCellsInfo.push({ recordId, fieldId, oldValue });
+      onCellChange(recordId, fieldId, '');
+    });
+    
+    // 通知父组件有单元格被清空
+    if (onClearCells) {
+      onClearCells(clearedCellsInfo);
+    }
+    
+    clearSelectedCells();
+  }, [selectedCells, records, onCellChange, clearSelectedCells, onClearCells]);
+
+  // 计算矩形区域内的所有单元格
+  const getSelectedCellsInRange = useCallback((startRecordId: string, startFieldId: string, endRecordId: string, endFieldId: string) => {
+    const startRecordIndex = records.findIndex(r => r.id === startRecordId);
+    const startFieldIndex = visibleFields.findIndex(f => f.id === startFieldId);
+    const endRecordIndex = records.findIndex(r => r.id === endRecordId);
+    const endFieldIndex = visibleFields.findIndex(f => f.id === endFieldId);
+    
+    if (startRecordIndex === -1 || startFieldIndex === -1 || endRecordIndex === -1 || endFieldIndex === -1) {
+      return new Set<string>();
+    }
+    
+    const minRecordIndex = Math.min(startRecordIndex, endRecordIndex);
+    const maxRecordIndex = Math.max(startRecordIndex, endRecordIndex);
+    const minFieldIndex = Math.min(startFieldIndex, endFieldIndex);
+    const maxFieldIndex = Math.max(startFieldIndex, endFieldIndex);
+    
+    const cells = new Set<string>();
+    for (let r = minRecordIndex; r <= maxRecordIndex; r++) {
+      for (let f = minFieldIndex; f <= maxFieldIndex; f++) {
+        const cellKey = getCellKey(records[r].id, visibleFields[f].id);
+        cells.add(cellKey);
+      }
+    }
+    return cells;
+  }, [records, visibleFields, getCellKey]);
+
+  // 开始拖拽选择
+  const handleCellMouseDown = useCallback((e: React.MouseEvent, recordId: string, fieldId: string) => {
+    if (e.button !== 0) return; // 只处理左键
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 如果正在编辑中，先取消编辑
+    if (editing) setEditing(null);
+    
+    mouseDownTimeRef.current = Date.now();
+    mouseDownCellRef.current = { recordId, fieldId };
+    
+    // 如果是 Shift 键或 Ctrl/Cmd 键，使用原来的选择方式
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      selectCell(recordId, fieldId, e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
+    
+    isDraggingRef.current = true;
+    setCellDragSelection({
+      isDragging: true,
+      startRecordId: recordId,
+      startFieldId: fieldId,
+      currentRecordId: recordId,
+      currentFieldId: fieldId,
+    });
+    setSelectionAnchor({ recordId, fieldId });
+    // 初始选中一个单元格
+    setSelectedCells(new Set([getCellKey(recordId, fieldId)]));
+  }, [editing, getCellKey, selectCell]);
+
+  // 拖拽过程中更新选择
+  const handleCellMouseEnter = useCallback((recordId: string, fieldId: string) => {
+    if (!isDraggingRef.current || !cellDragSelection) return;
+    
+    setCellDragSelection(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        currentRecordId: recordId,
+        currentFieldId: fieldId,
+      };
+    });
+    
+    const cells = getSelectedCellsInRange(
+      cellDragSelection.startRecordId,
+      cellDragSelection.startFieldId,
+      recordId,
+      fieldId
+    );
+    setSelectedCells(cells);
+  }, [cellDragSelection, getSelectedCellsInRange]);
+
+  // 结束拖拽选择
+  const handleCellMouseUp = useCallback((e: React.MouseEvent) => {
+    const now = Date.now();
+    const timeDiff = now - mouseDownTimeRef.current;
+    const startCell = mouseDownCellRef.current;
+    
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      setCellDragSelection(prev => prev ? { ...prev, isDragging: false } : null);
+      
+      // 如果点击时间很短且单元格没有变化，说明是单击
+      if (timeDiff < 200 && startCell) {
+        // 只是单击，保持单个选中状态
+        const cellKey = getCellKey(startCell.recordId, startCell.fieldId);
+        setSelectedCells(new Set([cellKey]));
+        setSelectionAnchor({ recordId: startCell.recordId, fieldId: startCell.fieldId });
+      }
+    }
+    
+    mouseDownCellRef.current = null;
+  }, [getCellKey]);
+
   // Click outside table = cancel edit & deselect column & close context menu
   const tableRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
         if (editing) setEditing(null);
-        if (selectedColIds.size > 0) setSelectedColIds(new Set());
-        if (cellRange) setCellRange(null);
+        if (selectedColId) setSelectedColId(null);
+        if (selectedCells.size > 0) clearSelectedCells();
       }
-      // Close context menus on any click
+      // Close context menu on any click
       setContextMenu(null);
-      setRowContextMenu(null);
     };
+    
+    const globalMouseUpHandler = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        setCellDragSelection(prev => prev ? { ...prev, isDragging: false } : null);
+      }
+    };
+    
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [editing, selectedColIds]);
-
-  // ── Cell range selection: drag to select ──
-  const isCellInRange = useCallback((rowIdx: number, colIdx: number) => {
-    if (!cellRange) return false;
-    const minRow = Math.min(cellRange.startRowIdx, cellRange.endRowIdx);
-    const maxRow = Math.max(cellRange.startRowIdx, cellRange.endRowIdx);
-    const minCol = Math.min(cellRange.startColIdx, cellRange.endColIdx);
-    const maxCol = Math.max(cellRange.startColIdx, cellRange.endColIdx);
-    return rowIdx >= minRow && rowIdx <= maxRow && colIdx >= minCol && colIdx <= maxCol;
-  }, [cellRange]);
-
-  const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIdx: number, colIdx: number) => {
-    if (e.button !== 0) return;
-    // If clicking inside the active editor (e.g. input), let the browser handle cursor placement
-    const target = e.target as HTMLElement;
-    if (editing && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.closest(".cell-editor-wrap"))) {
-      return;
-    }
-    // If currently editing a different cell, exit edit mode first
-    if (editing) setEditing(null);
-
-    // Check if clicking on an already-selected single cell (for "click again to edit")
-    const wasAlreadySelected = cellRange &&
-      cellRange.startRowIdx === cellRange.endRowIdx &&
-      cellRange.startColIdx === cellRange.endColIdx &&
-      cellRange.startRowIdx === rowIdx &&
-      cellRange.startColIdx === colIdx;
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    cellDragRef.current = { startRowIdx: rowIdx, startColIdx: colIdx, startX, startY, dragging: false };
-    justCellDraggedRef.current = false;
-
-    // Set initial selection to this single cell; clear column selection
-    setCellRange({ startRowIdx: rowIdx, startColIdx: colIdx, endRowIdx: rowIdx, endColIdx: colIdx });
-    setSelectedColIds(new Set());
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!cellDragRef.current) return;
-      const dx = ev.clientX - cellDragRef.current.startX;
-      const dy = ev.clientY - cellDragRef.current.startY;
-
-      if (!cellDragRef.current.dragging && (Math.abs(dx) > CELL_DRAG_THRESHOLD || Math.abs(dy) > CELL_DRAG_THRESHOLD)) {
-        cellDragRef.current.dragging = true;
-        justCellDraggedRef.current = true;
-        setEditing(null); // cancel any pending edit
-        document.body.style.userSelect = "none";
-      }
-
-      if (cellDragRef.current.dragging) {
-        const el = document.elementFromPoint(ev.clientX, ev.clientY);
-        const td = el?.closest("td[data-row-idx][data-col-idx]") as HTMLElement | null;
-        if (td) {
-          const endRowIdx = parseInt(td.getAttribute("data-row-idx")!, 10);
-          const endColIdx = parseInt(td.getAttribute("data-col-idx")!, 10);
-          if (!isNaN(endRowIdx) && !isNaN(endColIdx)) {
-            setCellRange(prev => prev ? { ...prev, endRowIdx, endColIdx } : null);
-          }
-        }
-      }
+    document.addEventListener("mouseup", globalMouseUpHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("mouseup", globalMouseUpHandler);
     };
+  }, [editing, selectedColId, selectedCells, clearSelectedCells]);
 
-    const onMouseUp = () => {
-      if (cellDragRef.current?.dragging) {
-        // Suppress clicks that might follow the drag (e.g. checkbox toggle)
-        requestAnimationFrame(() => { justCellDraggedRef.current = false; });
-      } else {
-        justCellDraggedRef.current = false;
-        // Click (no drag) on an already-selected single cell → enter edit
-        if (wasAlreadySelected) {
-          const field = visibleFields[colIdx];
-          if (field && field.type !== "AutoNumber" && field.type !== "Checkbox") {
-            startEdit(records[rowIdx]?.id, field.id);
-          }
-        }
-      }
-      cellDragRef.current = null;
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [editing, cellRange, records, visibleFields, startEdit]);
-
-  // ── Keyboard: Delete/Backspace on selected rows or cells, Escape clears selection ──
-  // Uses refs for selectedRowIds and cellRange to guarantee latest state
-  // (eliminates stale-closure race between checkbox click and Delete keydown)
+  // 键盘事件处理
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in a text input/textarea (but allow checkbox)
-      const target = e.target as HTMLInputElement;
-      if (target.tagName === "TEXTAREA") return;
-      if (target.tagName === "INPUT" && target.type !== "checkbox") return;
-
-      if ((e.key === "Delete" || e.key === "Backspace") && !editing) {
-        // Read latest state from refs (not closure) to avoid stale values
-        const currentSelectedRowIds = selectedRowIdsRef.current;
-        const currentCellRange = cellRangeRef.current;
-
-        // Priority 1: rows selected via checkbox → clear all cells of those rows (safety delete controlled)
-        if (currentSelectedRowIds.size > 0) {
-          e.preventDefault();
-          const cells: Array<{ recordId: string; fieldId: string }> = [];
-          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
-          for (let r = 0; r < records.length; r++) {
-            if (!currentSelectedRowIds.has(records[r].id)) continue;
-            for (let c = 0; c < visibleFields.length; c++) {
-              const field = visibleFields[c];
-              if (readOnlyTypes.has(field.type)) continue;
-              cells.push({ recordId: records[r].id, fieldId: field.id });
-            }
-          }
-          if (cells.length > 0) onClearRowCells?.(cells);
-          return;
-        }
-        // Priority 2: cell range selected → clear cells directly (no confirmation)
-        if (currentCellRange) {
-          e.preventDefault();
-          const minRow = Math.min(currentCellRange.startRowIdx, currentCellRange.endRowIdx);
-          const maxRow = Math.max(currentCellRange.startRowIdx, currentCellRange.endRowIdx);
-          const minCol = Math.min(currentCellRange.startColIdx, currentCellRange.endColIdx);
-          const maxCol = Math.max(currentCellRange.startColIdx, currentCellRange.endColIdx);
-
-          const cells: Array<{ recordId: string; fieldId: string }> = [];
-          const readOnlyTypes = new Set(["AutoNumber", "CreatedTime", "ModifiedTime"]);
-          for (let r = minRow; r <= maxRow; r++) {
-            for (let c = minCol; c <= maxCol; c++) {
-              if (r < records.length && c < visibleFields.length) {
-                const field = visibleFields[c];
-                if (readOnlyTypes.has(field.type)) continue;
-                cells.push({ recordId: records[r].id, fieldId: field.id });
-              }
-            }
-          }
-          if (cells.length > 0) onClearCells?.(cells);
-        }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 删除键清空选中单元格
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCells.size > 0 && !editing) {
+        e.preventDefault();
+        clearCells();
       }
-
-      if (e.key === "Escape" && cellRangeRef.current && !editing) {
-        setCellRange(null);
+      // Escape 键取消选择
+      if (e.key === 'Escape') {
+        if (editing) {
+          cancelEdit();
+        } else if (selectedCells.size > 0) {
+          clearSelectedCells();
+        }
       }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [editing, records, visibleFields, onClearCells, onClearRowCells]);
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedCells, editing, clearCells, cancelEdit, clearSelectedCells]);
 
   // ── Column resize handlers ──
   const handleResizeStart = useCallback((e: React.MouseEvent, fieldId: string) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const field = visibleFields.find(f => f.id === fieldId);
-    const startWidth = colWidths[fieldId] ?? getDefaultColWidth(field ?? { id: fieldId });
+    const startWidth = colWidths[fieldId] ?? DEFAULT_COL_WIDTHS[fieldId] ?? 120;
     resizeRef.current = { fieldId, startX, startWidth };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -987,68 +876,100 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     document.addEventListener("mouseup", onMouseUp);
   }, [colWidths]);
 
-  // ── Header click → select column (Shift+Click = add to selection) ──
-  const handleHeaderClick = useCallback((fieldId: string, shiftKey = false) => {
-    setCellRange(null); // Clear cell selection when selecting columns
-    setSelectedColIds(prev => {
-      if (shiftKey) {
-        // Shift+Click: toggle this column in the multi-selection
-        const next = new Set(prev);
-        if (next.has(fieldId)) next.delete(fieldId);
-        else next.add(fieldId);
-        return next;
-      }
-      // Normal click: single-select toggle
-      if (prev.size === 1 && prev.has(fieldId)) return new Set();
-      return new Set([fieldId]);
-    });
+  // ── Header click → select column ──
+  const handleHeaderClick = useCallback((fieldId: string) => {
+    setSelectedColId((prev) => (prev === fieldId ? null : fieldId));
   }, []);
 
-  // ── Context menu (right-click on header) ──
+  // ── Context menu (right-click on header or cell) ──
   const handleHeaderContextMenu = useCallback((e: React.MouseEvent, fieldId: string) => {
     e.preventDefault();
-    let ids: string[];
-    if (selectedColIds.has(fieldId) && selectedColIds.size > 0) {
-      ids = [...selectedColIds];
-    } else {
-      ids = [fieldId];
-    }
-    if (ids.length === 0) return;
-    setContextMenu({ x: e.clientX, y: e.clientY, fieldIds: ids });
-  }, [selectedColIds]);
+    // Don't allow deleting the primary field (fld_name)
+    if (fieldId === "fld_name") return;
+    setContextMenu({ x: e.clientX, y: e.clientY, fieldId });
+  }, []);
+
+  const handleCellContextMenu = useCallback((e: React.MouseEvent, fieldId: string, recordId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, fieldId, recordId });
+  }, []);
 
   const handleDeleteFieldClick = useCallback(() => {
     if (!contextMenu) return;
-    const ids = contextMenu.fieldIds;
+    const fieldId = contextMenu.fieldId;
     setContextMenu(null);
-    if (ids.length === 1) {
-      onDeleteField?.(ids[0]);
-    } else {
-      onDeleteFields?.(ids);
-    }
-    // Remove deleted columns from selection
-    setSelectedColIds(prev => {
-      const next = new Set(prev);
-      for (const id of ids) next.delete(id);
-      return next;
-    });
-  }, [contextMenu, onDeleteField, onDeleteFields]);
+    onDeleteField?.(fieldId);
+    // If this column was selected, deselect
+    setSelectedColId((prev) => (prev === fieldId ? null : prev));
+  }, [contextMenu, onDeleteField]);
 
   const handleHideFieldClick = useCallback(() => {
     if (!contextMenu) return;
-    const ids = contextMenu.fieldIds;
+    const fieldId = contextMenu.fieldId;
     setContextMenu(null);
-    if (ids.length === 1) {
-      onHideField?.(ids[0]);
+    onHideField?.(fieldId);
+    setSelectedColId((prev) => (prev === fieldId ? null : prev));
+  }, [contextMenu, onHideField]);
+
+  const handleDeleteRecordsClick = useCallback(() => {
+    if (!contextMenu) return;
+    
+    let recordIdsToDelete: string[];
+    if (selectedRecordIds.size > 0) {
+      recordIdsToDelete = Array.from(selectedRecordIds);
+    } else if (contextMenu.recordId) {
+      recordIdsToDelete = [contextMenu.recordId];
     } else {
-      onHideFields?.(ids);
+      return;
     }
-    setSelectedColIds(prev => {
+    
+    setContextMenu(null);
+    
+    if (window.confirm(`确定要删除 ${recordIdsToDelete.length} 条记录吗？`)) {
+      onDeleteRecords?.(recordIdsToDelete);
+      setSelectedRecordIds(new Set());
+      
+      setSelectedCells((prev) => {
+        const next = new Set(prev);
+        next.forEach(cellKey => {
+          const [recordId] = cellKey.split('-');
+          if (recordIdsToDelete.includes(recordId)) {
+            next.delete(cellKey);
+          }
+        });
+        return next;
+      });
+    }
+  }, [contextMenu, selectedRecordIds, onDeleteRecords]);
+
+  const handleToggleRecordSelection = useCallback((recordId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isAdding = !selectedRecordIds.has(recordId);
+    
+    setSelectedRecordIds((prev) => {
       const next = new Set(prev);
-      for (const id of ids) next.delete(id);
+      if (isAdding) {
+        next.add(recordId);
+      } else {
+        next.delete(recordId);
+      }
       return next;
     });
-  }, [contextMenu, onHideField, onHideFields]);
+    
+    setSelectedCells((prev) => {
+      const next = new Set(prev);
+      visibleFields.forEach(field => {
+        const cellKey = getCellKey(recordId, field.id);
+        if (isAdding) {
+          next.add(cellKey);
+        } else {
+          next.delete(cellKey);
+        }
+      });
+      return next;
+    });
+  }, [selectedRecordIds, visibleFields, getCellKey]);
 
   // ── Drag-to-reorder columns ──
   const dragOverRef = useRef<string | null>(null);
@@ -1060,8 +981,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     const rect = th.getBoundingClientRect();
     if (e.clientX > rect.right - 8) return;
 
-    // Only allow drag if the column is already selected (and it's the only selected one)
-    if (!selectedColIds.has(fieldId) || selectedColIds.size !== 1) return;
+    // Only allow drag if the column is already selected
+    if (selectedColId !== fieldId) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -1134,7 +1055,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [selectedColIds]);
+  }, [selectedColId]);
 
   // Compute drag offset for the dragged column header
   const getDragTransform = (fieldId: string): React.CSSProperties => {
@@ -1155,57 +1076,39 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     return "col-drag-over";
   };
 
-  // Compute exact table width so table-layout:fixed allocates columns precisely.
-  // The "add field" col has no explicit width — it absorbs any extra space when container is wider.
-  const INDEX_COL = 44;
-  const ADD_FIELD_COL = 136;
-  const fieldWidthSum = visibleFields.reduce((sum, f) => sum + (colWidths[f.id] ?? getDefaultColWidth(f)), 0);
-  const colSum = INDEX_COL + fieldWidthSum + ADD_FIELD_COL;
-  const tableWidth = Math.max(colSum, containerWidth);
-
   return (
     <div className="table-wrap" ref={tableRef}>
-      <div className="table-container" ref={containerRef}>
-        <table className="data-table" style={{ width: tableWidth }}>
+      <div className="table-container">
+        <table className="data-table">
           <colgroup>
-            <col style={{ width: INDEX_COL }} />
+            <col style={{ width: 44 }} />
             {visibleFields.map((f) => (
-              <col key={f.id} style={{ width: colWidths[f.id] ?? getDefaultColWidth(f) }} />
+              <col key={f.id} style={{ width: colWidths[f.id] ?? DEFAULT_COL_WIDTHS[f.id] ?? 120 }} />
             ))}
-            <col />
+            <col style={{ width: 136 }} />
           </colgroup>
           <thead>
             <tr>
               <th className="col-index">
-                <input
-                  type="checkbox"
-                  className="row-checkbox"
-                  ref={headerCheckRef}
-                  checked={allSelected}
-                  onChange={handleHeaderCheckChange}
-                />
+                <input type="checkbox" className="row-checkbox" />
               </th>
               {visibleFields.map((f) => (
                 <th
                   key={f.id}
                   ref={(el) => { if (el) headerRefs.current.set(f.id, el); else headerRefs.current.delete(f.id); }}
                   data-field-id={f.id}
-                  className={`col-${f.id} ${selectedColIds.has(f.id) ? "col-selected" : ""} ${getDropIndicatorStyle(f.id)}`}
+                  className={`col-${f.id} ${selectedColId === f.id ? "col-selected" : ""} ${getDropIndicatorStyle(f.id)}`}
                   style={{
                     ...(getDragTransform(f.id)),
-                    cursor: selectedColIds.has(f.id) && selectedColIds.size === 1 && !resizeRef.current ? "grab" : undefined,
+                    cursor: selectedColId === f.id && !resizeRef.current ? "grab" : undefined,
                   }}
-                  onClick={(e) => {
+                  onClick={() => {
                     // Don't toggle selection if we just finished a drag
-                    if (!dragRef.current && !justDraggedRef.current) handleHeaderClick(f.id, e.shiftKey);
+                    if (!dragRef.current && !justDraggedRef.current) handleHeaderClick(f.id);
                   }}
                   onContextMenu={(e) => handleHeaderContextMenu(e, f.id)}
-                  onDoubleClick={() => {
-                    const th = headerRefs.current.get(f.id);
-                    if (th) onEditField?.(f.id, th.getBoundingClientRect());
-                  }}
                   onMouseDown={(e) => {
-                    if (e.button === 0 && selectedColIds.has(f.id) && selectedColIds.size === 1) {
+                    if (e.button === 0 && selectedColId === f.id) {
                       handleDragStart(e, f.id);
                     }
                   }}
@@ -1221,68 +1124,55 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   />
                 </th>
               ))}
-              <th
-                className="col-add"
-                title={t("table.addField")}
-                onClick={(e) => {
-                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  onAddField?.(rect);
-                }}
-              >
-                <span className="col-add-icon">
+              <th className="col-add">
+                <button className="col-add-btn" title="Add field">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                </span>
+                </button>
               </th>
             </tr>
           </thead>
           <tbody>
             {records.map((record, idx) => {
               const isHovered = hoveredRowId === record.id;
-              const isRowSelected = selectedRowIds.has(record.id);
-              const showCheckbox = selectedRowIds.size > 0 || isHovered;
+              const isSelected = selectedRecordIds.has(record.id);
               return (
                 <tr
                   key={record.id}
-                  className={`data-row ${isHovered ? "row-hovered" : ""} ${isRowSelected ? "row-selected" : ""}`}
+                  className={`data-row ${isHovered ? "row-hovered" : ""} ${isSelected ? "row-selected" : ""}`}
                   onMouseEnter={() => setHoveredRowId(record.id)}
                   onMouseLeave={() => setHoveredRowId(null)}
-                  onContextMenu={(e) => handleRowContextMenu(e, record.id)}
-                  onClick={(e) => {
-                    // Shift+Click on a row selects range (skip if click originated from checkbox)
-                    if (e.shiftKey && !(e.target instanceof HTMLInputElement)) {
-                      e.preventDefault();
-                      handleRowCheckChange(record.id, true);
-                    }
-                  }}
                 >
                   <td className="col-index">
-                    {showCheckbox ? (
-                      <input
-                        type="checkbox"
-                        className="row-checkbox"
-                        checked={isRowSelected}
-                        onChange={(e) => handleRowCheckChange(record.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                    {isHovered || isSelected ? (
+                      <input 
+                        type="checkbox" 
+                        className="row-checkbox" 
+                        checked={isSelected}
+                        onChange={(e) => handleToggleRecordSelection(record.id, e as any)}
                       />
                     ) : (
-                      <span
-                        className="row-number"
-                        onClick={(e) => { e.stopPropagation(); handleRowCheckChange(record.id, e.shiftKey); }}
-                      >{idx + 1}</span>
+                      <span className="row-number">{idx + 1}</span>
                     )}
                   </td>
-                  {visibleFields.map((f, fIdx) => {
+                  {visibleFields.map((f) => {
                     const isEditing = editing?.recordId === record.id && editing?.fieldId === f.id;
-                    const isColSelected = selectedColIds.has(f.id);
-                    const isCellSel = isCellInRange(idx, fIdx);
+                    const isColSelected = selectedColId === f.id;
+                    const cellKey = getCellKey(record.id, f.id);
+                    const isCellSelected = selectedCells.has(cellKey);
                     return (
                       <td
                         key={f.id}
-                        data-row-idx={idx}
-                        data-col-idx={fIdx}
-                        className={`col-${f.id} ${isEditing ? "td-editing" : ""} ${isColSelected ? "col-selected" : ""} ${isCellSel ? "cell-range-selected" : ""}`}
-                        onMouseDown={(e) => handleCellMouseDown(e, idx, fIdx)}
+                        className={`col-${f.id} ${isEditing ? "td-editing" : ""} ${isColSelected ? "col-selected" : ""} ${isCellSelected ? "cell-selected" : ""}`}
+                        onContextMenu={(e) => handleCellContextMenu(e, f.id, record.id)}
+                        onMouseDown={(e) => handleCellMouseDown(e, record.id, f.id)}
+                        onMouseEnter={() => handleCellMouseEnter(record.id, f.id)}
+                        onMouseUp={handleCellMouseUp}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          startEdit(record.id, f.id);
+                        }}
                       >
                         <EditableCell
                           field={f}
@@ -1305,7 +1195,7 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                  {t("table.addRecord")}
+                  Add record
                 </button>
               </td>
             </tr>
@@ -1313,65 +1203,47 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
         </table>
       </div>
       <div className="table-footer">
-        {records.length + " " + t("table.records")}
+        {records.length} records
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginLeft: 2 }}>
           <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </div>
 
-      {/* Context menu for field headers */}
+      {/* Context menu for field headers or cells */}
       {contextMenu && (
         <div
           className="field-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {contextMenu.fieldIds.length === 1 && (
-            <button className="field-context-menu-item" onClick={() => {
-              const fid = contextMenu.fieldIds[0];
-              const th = headerRefs.current.get(fid);
-              if (th) onEditField?.(fid, th.getBoundingClientRect());
-              setContextMenu(null);
-            }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              {t("table.editField")}
-            </button>
+          {contextMenu.recordId ? (
+            <>
+              <button className="field-context-menu-item" onClick={handleDeleteRecordsClick}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                删除记录
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="field-context-menu-item" onClick={handleHideFieldClick}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M2.03133 8.17212C2.48854 7.86232 3.11033 7.98182 3.42013 8.43903C5.2629 11.1586 8.63638 13 11.9999 13C15.3634 13 18.7369 11.1586 20.5797 8.43903C20.8895 7.98182 21.5112 7.86232 21.9685 8.17212C22.4257 8.48193 22.5452 9.10371 22.2354 9.56092C21.6739 10.3896 20.9972 11.1486 20.2338 11.8197L22.2425 13.8284C22.633 14.2189 22.633 14.8521 22.2425 15.2426C21.852 15.6331 21.2188 15.6331 20.8283 15.2426L18.707 13.1213C18.6764 13.0907 18.6482 13.0586 18.6224 13.0252C17.8775 13.4967 17.0823 13.8942 16.2549 14.2062L16.967 16.8637C17.1099 17.3972 16.7933 17.9455 16.2599 18.0884C15.7264 18.2314 15.1781 17.9148 15.0351 17.3813L14.3332 14.7617C13.5658 14.9178 12.7838 15 11.9999 15C11.289 15 10.5796 14.9324 9.88128 14.8033L9.1905 17.3813C9.04756 17.9148 8.49922 18.2314 7.96576 18.0884C7.43229 17.9455 7.11571 17.3972 7.25865 16.8637L7.95049 14.2817C7.0364 13.9548 6.15936 13.5237 5.34339 13.0036C5.31329 13.0448 5.27966 13.0841 5.24249 13.1213L3.12117 15.2426C2.73064 15.6332 2.09748 15.6332 1.70696 15.2426C1.31643 14.8521 1.31643 14.219 1.70696 13.8284L3.73924 11.7961C2.98679 11.1308 2.31937 10.3799 1.76442 9.56092C1.45462 9.10371 1.57412 8.48193 2.03133 8.17212Z" fill="currentColor"/>
+                </svg>
+                Hide field
+              </button>
+              <div className="field-context-menu-divider" />
+              <button className="field-context-menu-item" onClick={handleDeleteFieldClick}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                Delete field
+              </button>
+            </>
           )}
-          {!contextMenu.fieldIds.includes("fld_name") && <>
-          <button className="field-context-menu-item" onClick={handleHideFieldClick}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M2.03133 8.17212C2.48854 7.86232 3.11033 7.98182 3.42013 8.43903C5.2629 11.1586 8.63638 13 11.9999 13C15.3634 13 18.7369 11.1586 20.5797 8.43903C20.8895 7.98182 21.5112 7.86232 21.9685 8.17212C22.4257 8.48193 22.5452 9.10371 22.2354 9.56092C21.6739 10.3896 20.9972 11.1486 20.2338 11.8197L22.2425 13.8284C22.633 14.2189 22.633 14.8521 22.2425 15.2426C21.852 15.6331 21.2188 15.6331 20.8283 15.2426L18.707 13.1213C18.6764 13.0907 18.6482 13.0586 18.6224 13.0252C17.8775 13.4967 17.0823 13.8942 16.2549 14.2062L16.967 16.8637C17.1099 17.3972 16.7933 17.9455 16.2599 18.0884C15.7264 18.2314 15.1781 17.9148 15.0351 17.3813L14.3332 14.7617C13.5658 14.9178 12.7838 15 11.9999 15C11.289 15 10.5796 14.9324 9.88128 14.8033L9.1905 17.3813C9.04756 17.9148 8.49922 18.2314 7.96576 18.0884C7.43229 17.9455 7.11571 17.3972 7.25865 16.8637L7.95049 14.2817C7.0364 13.9548 6.15936 13.5237 5.34339 13.0036C5.31329 13.0448 5.27966 13.0841 5.24249 13.1213L3.12117 15.2426C2.73064 15.6332 2.09748 15.6332 1.70696 15.2426C1.31643 14.8521 1.31643 14.219 1.70696 13.8284L3.73924 11.7961C2.98679 11.1308 2.31937 10.3799 1.76442 9.56092C1.45462 9.10371 1.57412 8.48193 2.03133 8.17212Z" fill="currentColor"/>
-            </svg>
-            {contextMenu.fieldIds.length > 1 ? t("table.hideFields", { count: contextMenu.fieldIds.length }) : t("table.hideField")}
-          </button>
-          <div className="field-context-menu-divider" />
-          <button className="field-context-menu-item" onClick={handleDeleteFieldClick}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-            {contextMenu.fieldIds.length > 1 ? t("table.deleteFields", { count: contextMenu.fieldIds.length }) : t("table.deleteField")}
-          </button>
-          </>}
-        </div>
-      )}
-
-      {/* Context menu for rows (right-click) */}
-      {rowContextMenu && (
-        <div
-          className="field-context-menu"
-          style={{ left: rowContextMenu.x, top: rowContextMenu.y, minWidth: 200 }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button className="field-context-menu-item" onClick={handleDeleteRowsClick}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M4.5 3V2.5C4.5 1.67 5.17 1 6 1h4c.83 0 1.5.67 1.5 1.5V3M2 3.5h12M3.5 3.5v10c0 .83.67 1.5 1.5 1.5h6c.83 0 1.5-.67 1.5-1.5v-10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M6.5 6.5v4.5M9.5 6.5v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-            {rowContextMenu.recordIds.length === 1 ? t("table.deleteRecord") : t("table.deleteRecords", { count: rowContextMenu.recordIds.length })}
-          </button>
         </div>
       )}
     </div>
@@ -1381,5 +1253,47 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 export default TableView;
 
 function FieldIcon({ type }: { type: string }) {
-  return <FieldIconSvg type={type} size={18} className="field-icon" />;
+  switch (type) {
+    case "DateTime":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+          <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "SingleSelect":
+    case "MultiSelect":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+          <path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "User":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
+          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "Number":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <path d="M7 20l3-16M14 20l3-16M4 8h18M3 16h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "Checkbox":
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
+          <path d="m7 12 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    default:
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
+          <path d="M4 6h16M4 10h16M4 14h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+  }
 }

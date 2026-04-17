@@ -6,11 +6,37 @@ import {
   ViewFilter, FieldType,
 } from "../types.js";
 
+// Document store
+interface Document {
+  id: string;
+  name: string;
+  tables: Array<{ id: string; name: string; order: number }>;
+}
+
 let tables: Map<string, Table> = new Map();
+let documents: Map<string, Document> = new Map();
 let idCounter = 0;
 
 function genId(prefix: string): string {
   return `${prefix}_${(++idCounter).toString(36).padStart(4, "0")}`;
+}
+
+// ─── Document ───
+
+export function getDocument(docId: string): Document | undefined {
+  return documents.get(docId);
+}
+
+export function updateDocument(docId: string, data: { name: string }): Document | null {
+  const doc = documents.get(docId);
+  if (!doc) return null;
+  doc.name = data.name.slice(0, 100);
+  return doc;
+}
+
+export function getDocumentTables(docId: string): Array<{ id: string; name: string; order: number }> {
+  const doc = documents.get(docId);
+  return doc ? doc.tables : [];
 }
 
 // ─── Table ───
@@ -40,11 +66,106 @@ export function createTable(dto: CreateTableDTO): Table {
     autoNumberCounters: {},
   };
   tables.set(id, table);
+  
+  // Add to document if documentId is provided
+  if (dto.documentId) {
+    const doc = documents.get(dto.documentId);
+    if (doc) {
+      const order = doc.tables.length;
+      doc.tables.push({ id, name: table.name, order });
+    } else {
+      // Create document if it doesn't exist
+      const newDoc: Document = {
+        id: dto.documentId,
+        name: "Untitled Document",
+        tables: [{ id, name: table.name, order: 0 }],
+      };
+      documents.set(dto.documentId, newDoc);
+    }
+  }
+  
   return table;
 }
 
 export function deleteTable(id: string): boolean {
-  return tables.delete(id);
+  const deleted = tables.delete(id);
+  if (deleted) {
+    // Remove from all documents
+    for (const doc of documents.values()) {
+      doc.tables = doc.tables.filter(t => t.id !== id);
+      // Update orders
+      doc.tables.forEach((t, i) => t.order = i);
+    }
+  }
+  return deleted;
+}
+
+export function reorderTables(updates: Array<{ id: string; order: number }>, documentId: string): void {
+  const doc = documents.get(documentId);
+  if (!doc) return;
+  
+  for (const update of updates) {
+    const table = doc.tables.find(t => t.id === update.id);
+    if (table) table.order = update.order;
+  }
+  
+  // Sort tables by order
+  doc.tables.sort((a, b) => a.order - b.order);
+  // Reassign orders to ensure they're sequential
+  doc.tables.forEach((t, i) => t.order = i);
+}
+
+export function renameTable(tableId: string, name: string): Table | null {
+  const table = tables.get(tableId);
+  if (!table) return null;
+  table.name = sanitizeTableName(name);
+  
+  // Update table name in all documents
+  for (const doc of documents.values()) {
+    const tableInDoc = doc.tables.find(t => t.id === tableId);
+    if (tableInDoc) tableInDoc.name = table.name;
+  }
+  
+  return table;
+}
+
+export function resetTable(tableId: string, fields: any[], language: "en" | "zh"): { fields: Field[]; records: TableRecord[]; views: View[] } | null {
+  const table = tables.get(tableId);
+  if (!table) return null;
+  
+  // Reset fields
+  table.fields = [];
+  table.autoNumberCounters = {};
+  
+  // Create new fields
+  for (const fieldData of fields) {
+    const field: Field = {
+      id: genId("fld"),
+      tableId,
+      name: fieldData.name.slice(0, 100),
+      type: fieldData.type as FieldType,
+      isPrimary: table.fields.length === 0,
+      config: fieldData.config ?? {},
+    };
+    table.fields.push(field);
+    
+    // Initialize auto number counter
+    if (field.type === "AutoNumber") {
+      table.autoNumberCounters[field.id] = 0;
+    }
+  }
+  
+  // Reset records
+  table.records = [];
+  
+  // Reset views
+  table.views = [{ id: genId("viw"), tableId, name: "Grid", type: "grid", filter: { logic: "and", conditions: [] } }];
+  
+  return {
+    fields: table.fields,
+    records: table.records,
+    views: table.views,
+  };
 }
 
 // ─── Field ───
@@ -126,6 +247,67 @@ export function deleteField(tableId: string, fieldId: string): boolean {
   }
 
   delete t.autoNumberCounters[fieldId];
+  return true;
+}
+
+export function batchDeleteFields(tableId: string, fieldIds: string[]): { deleted: number; snapshot: any } {
+  const t = tables.get(tableId);
+  if (!t) return { deleted: 0, snapshot: null };
+  
+  let deleted = 0;
+  const snapshot = {
+    fields: t.fields.filter(f => fieldIds.includes(f.id)),
+    records: t.records.map(r => ({
+      id: r.id,
+      cells: Object.fromEntries(
+        Object.entries(r.cells).filter(([k]) => fieldIds.includes(k))
+      )
+    }))
+  };
+  
+  for (const fieldId of fieldIds) {
+    if (deleteField(tableId, fieldId)) {
+      deleted++;
+    }
+  }
+  
+  return { deleted, snapshot };
+}
+
+export function batchRestoreFields(tableId: string, snapshot: any): boolean {
+  const t = tables.get(tableId);
+  if (!t || !snapshot) return false;
+  
+  // Restore fields
+  if (snapshot.fields) {
+    for (const fieldData of snapshot.fields) {
+      const existingField = t.fields.find(f => f.id === fieldData.id);
+      if (!existingField) {
+        const field: Field = {
+          id: fieldData.id,
+          tableId,
+          name: fieldData.name,
+          type: fieldData.type,
+          isPrimary: fieldData.isPrimary,
+          config: fieldData.config,
+        };
+        t.fields.push(field);
+      }
+    }
+  }
+  
+  // Restore cells
+  if (snapshot.records) {
+    for (const recordData of snapshot.records) {
+      const record = t.records.find(r => r.id === recordData.id);
+      if (record && recordData.cells) {
+        for (const [fieldId, value] of Object.entries(recordData.cells)) {
+          record.cells[fieldId] = value;
+        }
+      }
+    }
+  }
+  
   return true;
 }
 
@@ -218,6 +400,33 @@ export function batchDeleteRecords(tableId: string, recordIds: string[]): number
   const before = t.records.length;
   t.records = t.records.filter(r => !idSet.has(r.id));
   return before - t.records.length;
+}
+
+export function batchCreateRecords(tableId: string, records: Array<{ id: string; cells: Record<string, any>; createdAt: number; updatedAt: number }>): number {
+  const t = tables.get(tableId);
+  if (!t) return 0;
+  
+  let created = 0;
+  for (const recordData of records) {
+    const record: TableRecord = {
+      id: recordData.id || genId("rec"),
+      tableId,
+      cells: recordData.cells,
+      createdAt: recordData.createdAt || Date.now(),
+      updatedAt: recordData.updatedAt || Date.now(),
+      createdBy: "system",
+      modifiedBy: "system",
+    };
+    t.records.push(record);
+    created++;
+  }
+  
+  return created;
+}
+
+// For restore functionality, we'll just return 0 since we don't have a trash can in memory store
+export function restoreRecords(recordIds: string[]): number {
+  return 0;
 }
 
 // ─── View ───
@@ -514,4 +723,52 @@ function cellValueToString(value: CellValue, field: Field, table: Table): string
       .join(", ");
   }
   return String(value);
+}
+
+// ─── AI Field Suggestions ───
+
+export interface FieldSuggestion {
+  name: string;
+  type: string;
+}
+
+export function suggestFields(tableId: string, opts?: { title?: string; excludeNames?: string[]; forceRefresh?: boolean }): { suggestions: FieldSuggestion[]; hasMore: boolean } {
+  const t = tables.get(tableId);
+  if (!t) return { suggestions: [], hasMore: false };
+  
+  // Mock field suggestions
+  const mockSuggestions: FieldSuggestion[] = [
+    { name: "Name", type: "Text" },
+    { name: "Email", type: "Email" },
+    { name: "Phone", type: "Phone" },
+    { name: "Age", type: "Number" },
+    { name: "Status", type: "Select" },
+    { name: "Created At", type: "DateTime" },
+  ];
+  
+  // Filter out excluded names
+  let filtered = mockSuggestions;
+  if (opts?.excludeNames?.length) {
+    filtered = mockSuggestions.filter(s => !opts.excludeNames!.includes(s.name));
+  }
+  
+  return {
+    suggestions: filtered,
+    hasMore: false,
+  };
+}
+
+// ─── AI Table Structure Generation ───
+
+export function generateTableStructure(tableName: string): { fields: Array<{ name: string; type: string; isPrimary?: boolean; config?: Record<string, any> }> } {
+  // Mock table structure generation
+  const mockFields = [
+    { name: "ID", type: "AutoNumber", isPrimary: true },
+    { name: "Name", type: "Text" },
+    { name: "Description", type: "LongText" },
+    { name: "Status", type: "Select", config: { options: [{ name: "Active" }, { name: "Inactive" }] } },
+    { name: "Created At", type: "DateTime" },
+  ];
+  
+  return { fields: mockFields };
 }

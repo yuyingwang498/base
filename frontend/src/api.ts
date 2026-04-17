@@ -287,6 +287,24 @@ export async function deleteRecords(
   return res.json();
 }
 
+// Backward compatibility
+export const batchDeleteRecords = deleteRecords;
+
+export async function restoreRecords(
+  recordIds: string[]
+): Promise<{ ok: boolean; restored: number }> {
+  const res = await mutationFetch(`${BASE}/tables/records/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recordIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to restore records");
+  }
+  return res.json();
+}
+
 export async function batchCreateRecords(
   tableId: string,
   records: { id: string; cells: Record<string, any>; createdAt: number; updatedAt: number }[]

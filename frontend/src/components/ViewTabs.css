@@ -42,9 +42,9 @@
 
 /* Active tab: h=44, white bg, no border, rounded top */
 .view-tab.active {
-  color: var(--color-text-primary);
+  color: var(--color-primary);
   background: var(--color-white);
-  font-weight: 400;
+  font-weight: 500;
   border: none;
   border-radius: 6px 6px 0 0;
   z-index: 1;
@@ -70,7 +70,7 @@
 }
 
 .view-tab-icon {
-  color: #1456F0;
+  color: currentColor;
   flex-shrink: 0;
 }
 
@@ -84,14 +84,14 @@
   right: 6px;
 }
 
-/* ─── Figma: Apply pill — rect x=354 y=74 w=156 h=28 rx=14 fill=#E0E9FF ─── */
+/* ─── Figma: Apply pill — rect x=354 y=74 w=156 h=24 rx=12 fill=#E0E9FF ─── */
 .view-tab-apply-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 14px;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 12px;
   background: #E0E9FF;
   margin-left: 8px;
   align-self: center;
@@ -102,7 +102,7 @@
 .view-tab-apply-text {
   font-size: 12px;
   color: #646A73;
-  line-height: 28px;
+  line-height: 24px;
 }
 
 .view-tab-apply-btn {
@@ -111,15 +111,14 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0 6px;
+  padding: 0 2px;
   font-family: var(--font-family);
   font-weight: 500;
-  line-height: 20px;
-  border-radius: var(--radius-s);
+  line-height: 24px;
 }
 
 .view-tab-apply-btn:hover {
-  background: rgba(20, 86, 240, 0.10);
+  text-decoration: underline;
 }
 
 /* Tab dividers: 1x14 between inactive tabs */

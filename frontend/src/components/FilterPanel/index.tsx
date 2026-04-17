@@ -4,7 +4,6 @@ import { Field, FilterCondition, FilterLogic, FilterOperator, FilterValue, ViewF
 import { generateFilter } from "../../api";
 import { useSpeechRecognition } from "../../hooks/useSpeechRecognition";
 import { useToast } from "../Toast/index";
-import { useTranslation } from "../../i18n/index";
 import FilterRow from "./FilterRow";
 import "./FilterPanel.css";
 import { v4 as uuidv4 } from "./uuid";
@@ -19,7 +18,6 @@ interface Props {
 }
 
 const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tableId, fields, filter, onFilterChange, onClose, anchorRef }, ref) {
-  const { t } = useTranslation();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [echoQuery, setEchoQuery] = useState("");
@@ -34,7 +32,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
 
   // ── Voice input ──
   const queryBeforeVoiceRef = useRef("");
-  const { isSupported: speechSupported, isListening, isStopping, start: startSpeech, stop: stopSpeech } = useSpeechRecognition({
+  const { isSupported: speechSupported, isListening, start: startSpeech, stop: stopSpeech } = useSpeechRecognition({
     lang: "zh-CN",
     onResult(text) {
       setQuery(queryBeforeVoiceRef.current + text);
@@ -125,16 +123,16 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
         setAiGenerated(true);
         onFilterChange(newFilter);
         if (newFilter.conditions.length === 0) {
-          toast.info(t("filter.conditionsGeneratedNoMatch"));
+          toast.info("Filter conditions generated, but no match has been found");
         } else {
-          toast.success(t("filter.conditionsGenerated"));
+          toast.success("Filter conditions generated");
         }
       },
       onError(_code, message) {
         setAiStatus("error");
         setAiError(message);
         setEchoQuery(q);
-        toast.error(message || t("filter.failedToGenerate"));
+        toast.error(message || "Failed to generate filter");
       },
       onDone() {
         // Stream closed
@@ -198,11 +196,11 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
   }, [filter.conditions.length]);
 
   const showGenerating = aiStatus === "generating";
-  const placeholder = t("filter.aiPlaceholder");
+  const placeholder = "Tell AI what you want to see, e.g.: records related to me";
 
   return (
     <div className="filter-panel" ref={ref} style={panelLeft !== undefined ? { left: panelLeft } : undefined}>
-      <div className="fp-title">{t("filter.title")}</div>
+      <div className="fp-title">Set Filter Conditions</div>
 
       {/* AI Input: Figma h=32 with AI icon */}
       <div className={`fp-ai-row ${showGenerating ? "generating" : ""} ${aiStatus === "error" ? "error" : ""}`}>
@@ -213,7 +211,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           {showGenerating ? (
             <div className="fp-ai-loading">
               <span className="fp-ai-loading-text">
-                <span className="fp-ai-loading-query">{t("filter.generatingBy")}&ldquo;{echoQuery}&rdquo;</span>
+                Generating filter by &ldquo;{echoQuery}&rdquo;
                 <LoadingDots />
               </span>
             </div>
@@ -223,7 +221,7 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
               className={`fp-ai-input ${echoQuery && !query ? "echo" : ""}`}
               type="text"
               value={query}
-              readOnly={isListening || isStopping}
+              readOnly={isListening}
               onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setEchoQuery(""); }}
               onKeyDown={handleInputKeyDown}
               onKeyUp={handleInputKeyUp}
@@ -231,27 +229,25 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
             />
           )}
         </div>
+        {speechSupported && !showGenerating && (
+          <button
+            className={`fp-ai-mic ${isListening ? "listening" : ""}`}
+            onClick={toggleVoice}
+            title={isListening ? "Stop recording" : "Voice input"}
+          >
+            <MicIcon />
+            {isListening && <span className="fp-mic-pulse" />}
+          </button>
+        )}
         {(query || echoQuery) && !showGenerating && (
-          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title={t("filter.clear")}>
+          <button className="fp-ai-clear" onClick={() => { if (isListening) stopSpeech(); handleClearAi(); }} title="Clear">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         )}
-        {speechSupported && !showGenerating && (
-          <button
-            className={`fp-ai-mic ${isListening ? (isStopping ? "stopping" : "listening") : ""}`}
-            onClick={toggleVoice}
-            title={isStopping ? t("filter.voiceFinishing") : isListening ? t("filter.voiceStop") : t("filter.voiceInput")}
-            disabled={isStopping}
-          >
-            <MicIcon />
-            {isListening && !isStopping && <span className="fp-mic-pulse" />}
-            {isStopping && <span className="fp-mic-stopping" />}
-          </button>
-        )}
-        {query.trim() && !showGenerating && !isListening && !isStopping && (
-          <button className="fp-ai-send" onClick={handleSubmit} title={t("filter.submit")}>
+        {query.trim() && !showGenerating && !isListening && (
+          <button className="fp-ai-send" onClick={handleSubmit} title="Submit">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 20V4M5 11l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -272,20 +268,20 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
 
       {(aiGenerated || filter.conditions.length >= 2) && (
         <div className="fp-logic-row">
-          {aiGenerated && <span className="fp-logic-left">{t("filter.conditionsGenerated")}</span>}
+          {aiGenerated && <span className="fp-logic-left">Filter conditions generated</span>}
           {filter.conditions.length >= 2 && (
             <div className="fp-logic-right">
-              <span className="fp-logic-label">{t("filter.match")}</span>
+              <span className="fp-logic-label">Match</span>
               <CustomSelect
                 value={filter.logic}
                 options={[
-                  { value: "and", label: t("filter.all") },
-                  { value: "or", label: t("filter.any") },
+                  { value: "and", label: "All" },
+                  { value: "or", label: "Any" },
                 ]}
                 onChange={(v) => handleLogicChange(v as FilterLogic)}
                 className="fp-logic-select"
               />
-              <span className="fp-logic-label">{t("filter.conditions")}</span>
+              <span className="fp-logic-label">conditions</span>
             </div>
           )}
         </div>
@@ -311,13 +307,13 @@ const FilterPanel = forwardRef<HTMLDivElement, Props>(function FilterPanel({ tab
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          {t("filter.addCondition")}
+          Add condition
         </button>
       </div>
 
       {filter.conditions.length > 0 && (
         <div className="fp-footer">
-          <button className="fp-save-view">{t("filter.saveAsNewView")}</button>
+          <button className="fp-save-view">Save as new view</button>
         </div>
       )}
     </div>

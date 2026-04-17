@@ -1,29 +1,12 @@
-/* Sidebar: width set via inline style, min 120px max 400px */
+/* Sidebar: matches real Lark Base — ~190px wide */
 .sidebar {
+  width: 190px;
   background: var(--color-white);
   border-right: 1px solid rgba(31, 35, 41, 0.15);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   overflow: hidden;
-  position: relative;
-}
-
-/* Resize handle on the right edge */
-.sidebar-resize-handle {
-  position: absolute;
-  top: 0;
-  right: -3px;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 10;
-}
-
-.sidebar-resize-handle:hover,
-.sidebar-resize-handle:active {
-  background: var(--color-primary);
-  opacity: 0.3;
 }
 
 /* Sidebar header: search trigger + action buttons, aligned with view tabs row */
@@ -97,9 +80,8 @@
   height: 32px;
   border-radius: var(--radius-m);
   transition: background 0.1s;
-  margin-bottom: 4px;
+  margin-bottom: 1px;
   position: relative;
-  cursor: pointer;
 }
 
 .sidebar-item:hover {
@@ -148,21 +130,6 @@
 .sidebar-item-more:hover {
   background: rgba(31, 35, 41, 0.08);
   color: var(--color-text-primary);
-}
-
-/* Drag-and-drop indicators */
-.sidebar-item.is-dragging {
-  opacity: 0.5;
-  z-index: 10;
-  position: relative;
-}
-
-.sidebar-item.drag-over-above {
-  box-shadow: inset 0 2px 0 0 var(--color-primary);
-}
-
-.sidebar-item.drag-over-below {
-  box-shadow: inset 0 -2px 0 0 var(--color-primary);
 }
 
 /* Footer: "+ New" button */

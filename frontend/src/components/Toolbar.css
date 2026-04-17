@@ -142,31 +142,3 @@
 .toolbar-clear-btn:hover {
   background: var(--color-primary-light);
 }
-
-/* Undo button */
-.toolbar-undo-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-s);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  padding: 0;
-  margin-right: 4px;
-}
-
-.toolbar-undo-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.toolbar-undo-btn.disabled {
-  color: var(--color-text-placeholder);
-  cursor: default;
-  pointer-events: none;
-}
