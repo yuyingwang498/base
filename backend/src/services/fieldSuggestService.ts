@@ -15,6 +15,7 @@ export interface SuggestFieldsRequest {
   tableId: string;
   title?: string;           // user's typed title (optional)
   excludeNames?: string[];  // already shown suggestions to exclude
+  forceRefresh?: boolean;   // invalidate cache and call LLM again
 }
 
 export interface SuggestFieldsResponse {
@@ -201,15 +202,17 @@ export function invalidateSuggestionCache(tableId: string): void {
 // ─── Main function: returns cached if available, else generates ───
 
 export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestFieldsResponse> {
-  const entry = cache.get(req.tableId);
+  // Force refresh: invalidate cache and call LLM again
+  if (req.forceRefresh) {
+    cache.delete(req.tableId);
+  }
 
+  const entry = cache.get(req.tableId);
   let suggestions: FieldSuggestion[];
 
   if (isCacheValid(entry)) {
-    // Cache hit — instant response
     suggestions = entry.suggestions;
   } else {
-    // Cache miss — call LLM (blocks, but subsequent calls will be cached)
     suggestions = await callLLM(req.tableId);
     cache.set(req.tableId, { suggestions, timestamp: Date.now(), generating: false });
   }

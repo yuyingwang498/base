@@ -104,7 +104,7 @@ export function useFieldSuggestions(tableId: string) {
   const abortRef = useRef<AbortController | null>(null);
   const shownNamesRef = useRef<Set<string>>(new Set());
 
-  const fetchSuggestions = useCallback(async (excludeNames?: string[]) => {
+  const fetchSuggestions = useCallback(async (opts?: { excludeNames?: string[]; forceRefresh?: boolean }) => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -112,7 +112,10 @@ export function useFieldSuggestions(tableId: string) {
     try {
       const res = await suggestFields(
         tableId,
-        { excludeNames: excludeNames ?? [...shownNamesRef.current] },
+        {
+          excludeNames: opts?.excludeNames ?? [...shownNamesRef.current],
+          forceRefresh: opts?.forceRefresh,
+        },
         ac.signal,
       );
       if (!ac.signal.aborted) {
@@ -133,7 +136,7 @@ export function useFieldSuggestions(tableId: string) {
     setCache([]);
     setPageIndex(0);
     shownNamesRef.current = new Set();
-    fetchSuggestions([]);
+    fetchSuggestions({ excludeNames: [] });
     return () => { abortRef.current?.abort(); };
   }, [tableId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -151,10 +154,11 @@ export function useFieldSuggestions(tableId: string) {
       // Still have cached pages — instant switch
       setPageIndex(nextPage);
     } else {
-      // Exhausted cache — re-fetch, show loading
+      // Exhausted cache — force new LLM call, show loading
       setCache([]);
       setPageIndex(0);
-      fetchSuggestions();
+      shownNamesRef.current = new Set();
+      fetchSuggestions({ forceRefresh: true });
     }
   }, [pageIndex, totalPages, fetchSuggestions]);
 

@@ -317,13 +317,13 @@ export interface SuggestFieldsResponse {
 
 export async function suggestFields(
   tableId: string,
-  opts?: { title?: string; excludeNames?: string[] },
+  opts?: { title?: string; excludeNames?: string[]; forceRefresh?: boolean },
   signal?: AbortSignal,
 ): Promise<SuggestFieldsResponse> {
   const res = await fetch(`${BASE}/ai/fields/suggest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames }),
+    body: JSON.stringify({ tableId, title: opts?.title, excludeNames: opts?.excludeNames, forceRefresh: opts?.forceRefresh }),
     signal,
   });
   if (!res.ok) return { suggestions: [], hasMore: false };
