@@ -66,7 +66,7 @@ Formula, SingleLink, DuplexLink, Lookup, CreatedUser, ModifiedUser, ai_summary, 
 
 # 设计规则
 1. 第一个字段必须是 Text 类型，isPrimary=true，名称为该表最核心的标识字段
-2. 生成 5-10 个字段，类型合理搭配，覆盖业务场景常见需求
+2. 生成 8-20 个字段，数量由你根据表名的业务复杂度自行判断，类型合理搭配，覆盖业务场景常见需求
 3. 除第一个字段外，其余字段 isPrimary=false
 4. 每个字段的 config 必须严格按照上述类型规则设置，不可遗漏必填 config
 5. 字段类型必须属于上述支持列表，不可使用不存在的类型

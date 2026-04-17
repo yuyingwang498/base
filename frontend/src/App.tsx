@@ -945,8 +945,10 @@ export default function App() {
       setActiveViewId(resetResult.views[0].id);
       initFieldOrderFromView(resetResult.views[0], resetResult.fields);
     }
+    // Re-fetch AI field suggestions with the new AI-generated fields
+    fieldSuggestions.refetch();
     return result.id;
-  }, [locale, switchTable, initFieldOrderFromView]);
+  }, [locale, switchTable, initFieldOrderFromView, fieldSuggestions]);
 
   // ── Reset to default: replace AI fields with a single Text column + 5 empty rows ──
   const handleResetToDefault = useCallback(async (tableId: string, _aiTableName: string): Promise<void> => {

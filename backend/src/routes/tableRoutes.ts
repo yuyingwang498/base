@@ -116,8 +116,9 @@ router.post("/:tableId/reset", async (req: Request, res: Response) => {
     return;
   }
 
-  // Invalidate AI field suggestion cache so new fields are used
+  // Invalidate AI field suggestion cache and warm up with new fields
   invalidateSuggestionCache(req.params.tableId);
+  warmupSuggestions(req.params.tableId);
 
   // Emit full-sync so connected clients reload
   eventBus.emitChange({
