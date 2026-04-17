@@ -272,9 +272,37 @@ export const en = {
 
   // Context menu
   "contextMenu.rename": "Rename",
+  "contextMenu.delete": "Delete",
+
+  // Delete table
+  "app.deleteTable": "Delete Table",
+  "app.deleteTableMsg": "Are you sure you want to delete table \"{{name}}\"? This cannot be undone.",
 
   // Toast (rename)
   "toast.renameFailed": "Rename failed, changes reverted",
+
+  // Create menu
+  "createMenu.quickCreate": "Quick Create",
+  "createMenu.aiCreate": "Create with AI",
+  "createMenu.template": "Template Center",
+  "createMenu.new": "New",
+  "createMenu.table": "Table",
+  "createMenu.form": "Form",
+  "createMenu.dashboard": "Dashboard",
+  "createMenu.workflow": "Workflow",
+  "createMenu.doc": "Document",
+  "createMenu.manage": "Manage",
+  "createMenu.folder": "Folder",
+  "createMenu.import": "Import / Sync Data",
+  "createMenu.appSection": "App",
+  "createMenu.app": "App",
+
+  // Toast (table creation)
+  "toast.createTableFailed": "Failed to create table",
+  "toast.reorderFailed": "Failed to reorder tables",
+
+  // Default field name
+  "defaultField.text": "Text",
 };
 
 export type TranslationKeys = typeof en;

@@ -7,7 +7,7 @@ import tableRoutes from "./routes/tableRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import sseRoutes from "./routes/sseRoutes.js";
 import { mockTable } from "./mockData.js";
-import { connectDB, loadTable, getTable, getDocument, updateDocument } from "./services/dbStore.js";
+import { connectDB, loadTable, getTable, getDocument, updateDocument, listTablesForDocument } from "./services/dbStore.js";
 import { eventBus } from "./services/eventBus.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -86,9 +86,8 @@ app.put("/api/documents/:docId", async (req, res) => {
 
 // GET /api/documents/:docId/tables — list tables in document
 app.get("/api/documents/:docId/tables", async (req, res) => {
-  // For now, return all tables (single-document mode)
-  const tables = await import("./services/dbStore.js").then(m => m.listTables());
-  res.json(tables.map(t => ({ id: t.id, name: t.name, documentId: req.params.docId })));
+  const tables = await listTablesForDocument(req.params.docId);
+  res.json(tables);
 });
 
 // Health check

@@ -23,6 +23,14 @@ export interface TableChangeEvent {
   payload: Record<string, any>;
 }
 
+export interface DocumentChangeEvent {
+  type: "table:create" | "table:delete" | "table:reorder";
+  documentId: string;
+  clientId: string;
+  timestamp: number;
+  payload: Record<string, any>;
+}
+
 class TableEventBus extends EventEmitter {
   emitChange(event: TableChangeEvent): void {
     const listeners = this.listenerCount(`table:${event.tableId}`);
@@ -36,6 +44,20 @@ class TableEventBus extends EventEmitter {
   ): () => void {
     this.on(`table:${tableId}`, listener);
     return () => this.off(`table:${tableId}`, listener);
+  }
+
+  emitDocumentChange(event: DocumentChangeEvent): void {
+    const listeners = this.listenerCount(`document:${event.documentId}`);
+    console.log(`[EventBus] ${event.type} doc=${event.documentId} client=${event.clientId} → ${listeners} subscriber(s)`);
+    this.emit(`document:${event.documentId}`, event);
+  }
+
+  subscribeDocument(
+    documentId: string,
+    listener: (event: DocumentChangeEvent) => void,
+  ): () => void {
+    this.on(`document:${documentId}`, listener);
+    return () => this.off(`document:${documentId}`, listener);
   }
 }
 

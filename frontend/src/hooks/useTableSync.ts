@@ -45,6 +45,7 @@ export function useTableSync(
   }, [tableId]);
 
   useEffect(() => {
+    isReconnect.current = false; // Reset on table switch to avoid redundant full sync
     const url = `/api/sync/${tableId}/events?clientId=${encodeURIComponent(clientId)}`;
     const es = new EventSource(url);
 

@@ -1,9 +1,50 @@
 import { Router, Request, Response } from "express";
-import { eventBus, TableChangeEvent } from "../services/eventBus.js";
+import { eventBus, TableChangeEvent, DocumentChangeEvent } from "../services/eventBus.js";
 
 const router = Router();
 
-// GET /api/sync/:tableId/events?clientId=xxx
+// GET /api/sync/documents/:docId/events?clientId=xxx — document-level SSE (must be before /:tableId)
+router.get("/documents/:docId/events", (req: Request, res: Response) => {
+  const { docId } = req.params;
+  const clientId = req.query.clientId as string;
+
+  if (!clientId) {
+    res.status(400).json({ error: "clientId query parameter is required" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  console.log(`[SSE] client=${clientId} connected (document=${docId})`);
+  res.write(
+    `event: connected\ndata: ${JSON.stringify({ clientId, timestamp: Date.now() })}\n\n`,
+  );
+
+  const unsubscribe = eventBus.subscribeDocument(
+    docId,
+    (event: DocumentChangeEvent) => {
+      res.write(
+        `event: document-change\ndata: ${JSON.stringify(event)}\n\n`,
+      );
+    },
+  );
+
+  const heartbeat = setInterval(() => {
+    res.write(`event: heartbeat\ndata: {}\n\n`);
+  }, 30_000);
+
+  req.on("close", () => {
+    console.log(`[SSE] client=${clientId} disconnected (document=${docId})`);
+    unsubscribe();
+    clearInterval(heartbeat);
+  });
+});
+
+// GET /api/sync/:tableId/events?clientId=xxx — table-level SSE
 router.get("/:tableId/events", (req: Request, res: Response) => {
   const { tableId } = req.params;
   const clientId = req.query.clientId as string;

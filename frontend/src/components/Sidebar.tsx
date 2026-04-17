@@ -1,57 +1,322 @@
-import { useState, useRef, ReactNode } from "react";
+import { useState, useRef, useCallback, ReactNode } from "react";
 import { useTranslation } from "../i18n/index";
 import InlineEdit from "./InlineEdit";
 import DropdownMenu from "./DropdownMenu";
+import type { MenuItem } from "./DropdownMenu";
+import ConfirmDialog from "./ConfirmDialog/index";
 import "./Sidebar.css";
 
 export interface SidebarItem {
   id: string;
+  type: "table" | "static";
   displayName: string;
   active: boolean;
+  order: number;
 }
 
 interface Props {
   items: SidebarItem[];
   onRenameItem: (id: string, newName: string) => void;
+  activeItemId: string;
+  onSelectItem: (id: string) => void;
+  onCreateTable: () => void;
+  onReorderTables: (updates: Array<{ id: string; order: number }>) => void;
+  onDeleteTable: (id: string) => void;
+  tableCount: number;
 }
 
+const DRAG_THRESHOLD = 4;
+
+/* ── Sidebar item icons (use currentColor to inherit active/hover color) ── */
 const ICONS: Record<string, ReactNode> = {
   table: (
-    <svg width="16" height="16" viewBox="21 119 14 14" fill="none">
-      <path d="M21.3334 120.667C21.3334 119.93 21.9303 119.333 22.6667 119.333H33.3334C34.0698 119.333 34.6667 119.93 34.6667 120.667V131.333C34.6667 132.07 34.0698 132.667 33.3334 132.667H22.6667C21.9303 132.667 21.3334 132.07 21.3334 131.333V120.667ZM22.6667 120.667V131.333H33.3334V120.667H22.6667Z" fill="currentColor"/>
-      <path d="M28.3334 122.667C27.9652 122.667 27.6667 122.965 27.6667 123.333C27.6667 123.702 27.9652 124 28.3334 124H31.3334C31.7016 124 32 123.702 32 123.333C32 122.965 31.7016 122.667 31.3334 122.667H28.3334Z" fill="currentColor"/>
-      <path d="M24 123.333C24 122.965 24.2985 122.667 24.6667 122.667H26C26.3682 122.667 26.6667 122.965 26.6667 123.333C26.6667 123.702 26.3682 124 26 124H24.6667C24.2985 124 24 123.702 24 123.333Z" fill="currentColor"/>
-      <path d="M28.3334 125.333C27.9652 125.333 27.6667 125.632 27.6667 126C27.6667 126.368 27.9652 126.667 28.3334 126.667H31.3334C31.7016 126.667 32 126.368 32 126C32 125.632 31.7016 125.333 31.3334 125.333H28.3334Z" fill="currentColor"/>
-      <path d="M24 126C24 125.632 24.2985 125.333 24.6667 125.333H26C26.3682 125.333 26.6667 125.632 26.6667 126C26.6667 126.368 26.3682 126.667 26 126.667H24.6667C24.2985 126.667 24 126.368 24 126Z" fill="currentColor"/>
-      <path d="M28.3334 128C27.9652 128 27.6667 128.299 27.6667 128.667C27.6667 129.035 27.9652 129.333 28.3334 129.333H31.3334C31.7016 129.333 32 129.035 32 128.667C32 128.299 31.7016 128 31.3334 128H28.3334Z" fill="currentColor"/>
-      <path d="M24 128.667C24 128.299 24.2985 128 24.6667 128H26C26.3682 128 26.6667 128.299 26.6667 128.667C26.6667 129.035 26.3682 129.333 26 129.333H24.6667C24.2985 129.333 24 129.035 24 128.667Z" fill="currentColor"/>
-    </svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.33337 2.66671C1.33337 1.93033 1.93033 1.33337 2.66671 1.33337H13.3334C14.0698 1.33337 14.6667 1.93033 14.6667 2.66671V13.3334C14.6667 14.0698 14.0698 14.6667 13.3334 14.6667H2.66671C1.93033 14.6667 1.33337 14.0698 1.33337 13.3334V2.66671ZM2.66671 2.66671V13.3334H13.3334V2.66671H2.66671Z" fill="currentColor"/><path d="M8.33337 4.66671C7.96518 4.66671 7.66671 4.96518 7.66671 5.33337C7.66671 5.70156 7.96518 6.00004 8.33337 6.00004H11.3334C11.7016 6.00004 12 5.70156 12 5.33337C12 4.96518 11.7016 4.66671 11.3334 4.66671H8.33337Z" fill="currentColor"/><path d="M4.00004 5.33337C4.00004 4.96518 4.29852 4.66671 4.66671 4.66671H6.00004C6.36823 4.66671 6.66671 4.96518 6.66671 5.33337C6.66671 5.70156 6.36823 6.00004 6.00004 6.00004H4.66671C4.29852 6.00004 4.00004 5.70156 4.00004 5.33337Z" fill="currentColor"/><path d="M8.33337 7.33337C7.96518 7.33337 7.66671 7.63185 7.66671 8.00004C7.66671 8.36823 7.96518 8.66671 8.33337 8.66671H11.3334C11.7016 8.66671 12 8.36823 12 8.00004C12 7.63185 11.7016 7.33337 11.3334 7.33337H8.33337Z" fill="currentColor"/><path d="M4.00004 8.00004C4.00004 7.63185 4.29852 7.33337 4.66671 7.33337H6.00004C6.36823 7.33337 6.66671 7.63185 6.66671 8.00004C6.66671 8.36823 6.36823 8.66671 6.00004 8.66671H4.66671C4.29852 8.66671 4.00004 8.36823 4.00004 8.00004Z" fill="currentColor"/><path d="M8.33337 10C7.96518 10 7.66671 10.2985 7.66671 10.6667C7.66671 11.0349 7.96518 11.3334 8.33337 11.3334H11.3334C11.7016 11.3334 12 11.0349 12 10.6667C12 10.2985 11.7016 10 11.3334 10H8.33337Z" fill="currentColor"/><path d="M4.00004 10.6667C4.00004 10.2985 4.29852 10 4.66671 10H6.00004C6.36823 10 6.66671 10.2985 6.66671 10.6667C6.66671 11.0349 6.36823 11.3334 6.00004 11.3334H4.66671C4.29852 11.3334 4.00004 11.0349 4.00004 10.6667Z" fill="currentColor"/></svg>
   ),
   dashboard: (
-    <svg width="16" height="16" viewBox="21 157 14 14" fill="none">
-      <path d="M24.33 159.201C24.0998 158.936 23.6993 158.894 23.4427 159.134C22.1445 160.351 21.3334 162.081 21.3334 164C21.3334 167.682 24.3181 170.667 28 170.667C31.6819 170.667 34.6667 167.682 34.6667 164C34.6667 160.318 31.6819 157.333 28 157.333C27.9762 157.333 27.9523 157.334 27.9285 157.334C27.5901 157.337 27.3334 157.624 27.3334 157.963L27.3334 160C27.3334 160.368 27.6319 160.667 28 160.667C28.3682 160.667 28.6667 160.368 28.6667 160V158.708C31.2976 159.036 33.3334 161.28 33.3334 164C33.3334 166.946 30.9456 169.333 28 169.333C25.0545 169.333 22.6667 166.946 22.6667 164C22.6667 162.513 23.2756 161.167 24.2578 160.2C24.5311 159.931 24.5812 159.491 24.33 159.201Z" fill="currentColor"/>
-      <path d="M28.7115 163.321C28.6101 163.218 25.7534 161.406 25.7534 161.406C25.7092 161.359 25.6484 161.331 25.5841 161.328C25.5197 161.326 25.457 161.349 25.4092 161.392C25.3615 161.435 25.3325 161.495 25.3286 161.559C25.3247 161.624 25.3461 161.687 25.3883 161.735L25.4054 161.753C25.4054 161.753 27.2177 164.611 27.3195 164.712C27.5042 164.897 27.7546 165 28.0155 165C28.2765 165 28.5269 164.897 28.7115 164.712C28.803 164.621 28.8755 164.512 28.925 164.393C28.9744 164.274 28.9999 164.146 28.9999 164.017C28.9999 163.887 28.9744 163.759 28.925 163.64C28.8755 163.521 28.803 163.412 28.7115 163.321Z" fill="currentColor"/>
-    </svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.33 3.201C4.1 2.936 3.699 2.894 3.443 3.134C2.145 4.351 1.333 6.081 1.333 8C1.333 11.682 4.318 14.667 8 14.667C11.682 14.667 14.667 11.682 14.667 8C14.667 4.318 11.682 1.333 8 1.333C7.976 1.333 7.952 1.334 7.929 1.334C7.59 1.337 7.333 1.624 7.333 1.963V4C7.333 4.368 7.632 4.667 8 4.667C8.368 4.667 8.667 4.368 8.667 4V2.708C11.298 3.036 13.333 5.28 13.333 8C13.333 10.946 10.946 13.333 8 13.333C5.054 13.333 2.667 10.946 2.667 8C2.667 6.513 3.276 5.167 4.258 4.2C4.531 3.931 4.581 3.491 4.33 3.201Z" fill="currentColor"/><path d="M8.712 7.321C8.61 7.218 5.753 5.406 5.753 5.406C5.709 5.359 5.648 5.331 5.584 5.328C5.52 5.326 5.457 5.348 5.409 5.392C5.361 5.435 5.333 5.495 5.329 5.559C5.325 5.623 5.346 5.687 5.388 5.735L5.405 5.753C5.405 5.753 7.218 8.611 7.32 8.712C7.504 8.897 7.755 9 8.016 9C8.277 9 8.527 8.897 8.712 8.712C8.803 8.621 8.876 8.512 8.925 8.393C8.974 8.274 9 8.146 9 8.017C9 7.887 8.974 7.759 8.925 7.64C8.876 7.521 8.803 7.412 8.712 7.321Z" fill="currentColor"/></svg>
   ),
   workflow: (
-    <svg width="16" height="16" viewBox="20 194 16 16" fill="none">
-      <path d="M24.2027 205H31.7974C31.9641 204.9 32.1434 204.82 32.3334 204.763L32.3334 203.332C32.3334 203.156 32.2632 202.986 32.1382 202.861C32.0131 202.736 31.8436 202.666 31.6668 202.666H24.3334C24.1566 202.666 23.9871 202.736 23.862 202.861C23.737 202.986 23.6668 203.156 23.6668 203.332L23.6667 204.763C23.8567 204.82 24.0364 204.9 24.2027 205ZM22.3334 204.763L22.3334 203.332C22.3334 202.802 22.5441 202.293 22.9192 201.918C23.2943 201.543 23.803 201.332 24.3334 201.332H27.3334V199.915C26.705 199.753 26.1573 199.367 25.793 198.83C25.4288 198.293 25.2729 197.641 25.3547 196.997C25.4365 196.353 25.7503 195.761 26.2373 195.332C26.7243 194.903 27.351 194.667 28.0001 194.667C28.6491 194.667 29.2759 194.903 29.7629 195.332C30.2499 195.761 30.5637 196.353 30.6455 196.997C30.7273 197.641 30.5714 198.293 30.2072 198.83C29.8429 199.367 29.2952 199.753 28.6668 199.915V201.332H31.6668C32.1972 201.332 32.7059 201.543 33.081 201.918C33.456 202.293 33.6668 202.802 33.6668 203.332L33.6667 204.763C34.1797 204.916 34.6245 205.241 34.9265 205.683C35.2285 206.124 35.3695 206.657 35.3257 207.19C35.2819 207.724 35.0561 208.226 34.6861 208.612C34.316 208.999 33.8243 209.247 33.2933 209.314C32.7623 209.381 32.2243 209.264 31.7696 208.982C31.3148 208.699 30.971 208.269 30.7956 207.764C30.6203 207.258 30.6241 206.707 30.8065 206.204C30.9889 205.701 31.3388 205.276 31.7974 205H24.2027C24.6614 205.276 25.0112 205.701 25.1936 206.204C25.376 206.707 25.3799 207.258 25.2045 207.764C25.0292 208.269 24.6853 208.699 24.2306 208.982C23.7759 209.264 23.2379 209.381 22.7069 209.314C22.1759 209.247 21.6841 208.999 21.3141 208.612C20.9441 208.226 20.7182 207.724 20.6744 207.19C20.6307 206.657 20.7716 206.124 21.0737 205.683C21.3757 205.241 21.8205 204.916 22.3334 204.763ZM28.0001 198.666C28.3537 198.666 28.6929 198.525 28.9429 198.275C29.193 198.025 29.3334 197.686 29.3334 197.332C29.3334 196.979 29.193 196.64 28.9429 196.39C28.6929 196.14 28.3537 195.999 28.0001 195.999C27.6465 195.999 27.3073 196.14 27.0573 196.39C26.8072 196.64 26.6668 196.979 26.6668 197.332C26.6668 197.686 26.8072 198.025 27.0573 198.275C27.3073 198.525 27.6465 198.666 28.0001 198.666ZM33.0001 208C33.2653 208 33.5197 207.894 33.7072 207.707C33.8947 207.519 34.0001 207.265 34.0001 207C34.0001 206.735 33.8947 206.48 33.7072 206.293C33.5197 206.105 33.2653 206 33.0001 206C32.7349 206 32.4805 206.105 32.293 206.293C32.1054 206.48 32.0001 206.735 32.0001 207C32.0001 207.265 32.1054 207.519 32.293 207.707C32.4805 207.894 32.7349 208 33.0001 208ZM23.0001 208C23.2653 208 23.5197 207.894 23.7072 207.707C23.8947 207.519 24.0001 207.265 24.0001 207C24.0001 206.735 23.8947 206.48 23.7072 206.293C23.5197 206.105 23.2653 206 23.0001 206C22.7349 206 22.4805 206.105 22.293 206.293C22.1054 206.48 22.0001 206.735 22.0001 207C22.0001 207.265 22.1054 207.519 22.293 207.707C22.4805 207.894 22.7349 208 23.0001 208Z" fill="currentColor"/>
-    </svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.203 11H11.797C11.964 10.9 12.143 10.82 12.333 10.763V9.333C12.333 9.156 12.263 8.986 12.138 8.861C12.013 8.736 11.844 8.666 11.667 8.666H4.333C4.157 8.666 3.987 8.736 3.862 8.861C3.737 8.986 3.667 9.156 3.667 9.333V10.763C3.857 10.82 4.036 10.9 4.203 11ZM2.333 10.763V9.333C2.333 8.802 2.544 8.293 2.919 7.918C3.294 7.543 3.803 7.333 4.333 7.333H7.333V5.915C6.705 5.753 6.157 5.367 5.793 4.83C5.429 4.293 5.273 3.641 5.355 2.997C5.437 2.353 5.75 1.761 6.237 1.332C6.724 0.903 7.351 0.667 8 0.667C8.649 0.667 9.276 0.903 9.763 1.332C10.25 1.761 10.564 2.353 10.646 2.997C10.727 3.641 10.571 4.293 10.207 4.83C9.843 5.367 9.295 5.753 8.667 5.915V7.333H11.667C12.197 7.333 12.706 7.543 13.081 7.918C13.456 8.293 13.667 8.802 13.667 9.333V10.763C14.18 10.916 14.625 11.241 14.927 11.683C15.229 12.124 15.37 12.657 15.326 13.19C15.282 13.724 15.056 14.226 14.686 14.613C14.316 14.999 13.824 15.247 13.293 15.314C12.762 15.381 12.224 15.264 11.77 14.982C11.315 14.699 10.971 14.269 10.796 13.764C10.62 13.258 10.624 12.707 10.807 12.204C10.989 11.701 11.339 11.276 11.797 11H4.203C4.661 11.276 5.011 11.701 5.194 12.204C5.376 12.707 5.38 13.258 5.205 13.764C5.029 14.269 4.685 14.699 4.231 14.982C3.776 15.264 3.238 15.381 2.707 15.314C2.176 15.247 1.684 14.999 1.314 14.613C0.944 14.226 0.718 13.724 0.674 13.19C0.631 12.657 0.772 12.124 1.074 11.683C1.376 11.241 1.82 10.916 2.333 10.763ZM8 4.666C8.354 4.666 8.693 4.525 8.943 4.275C9.193 4.025 9.333 3.686 9.333 3.333C9.333 2.979 9.193 2.64 8.943 2.39C8.693 2.14 8.354 1.999 8 1.999C7.646 1.999 7.307 2.14 7.057 2.39C6.807 2.64 6.667 2.979 6.667 3.333C6.667 3.686 6.807 4.025 7.057 4.275C7.307 4.525 7.646 4.666 8 4.666ZM13 14C13.265 14 13.52 13.894 13.707 13.707C13.895 13.519 14 13.265 14 13C14 12.735 13.895 12.48 13.707 12.293C13.52 12.105 13.265 12 13 12C12.735 12 12.48 12.105 12.293 12.293C12.105 12.48 12 12.735 12 13C12 13.265 12.105 13.519 12.293 13.707C12.48 13.894 12.735 14 13 14ZM3 14C3.265 14 3.52 13.894 3.707 13.707C3.895 13.519 4 13.265 4 13C4 12.735 3.895 12.48 3.707 12.293C3.52 12.105 3.265 12 3 12C2.735 12 2.48 12.105 2.293 12.293C2.105 12.48 2 12.735 2 13C2 13.265 2.105 13.519 2.293 13.707C2.48 13.894 2.735 14 3 14Z" fill="currentColor"/></svg>
   ),
 };
 
-export default function Sidebar({ items, onRenameItem }: Props) {
+/* ── Create-menu icons from Figma (colorful, each has its own fill) ── */
+const ARROW_RIGHT = (
+  <svg width="16" height="16" viewBox="0 0 22 22" fill="none"><path d="M8.52864 5.86189C8.26829 6.12224 8.26829 6.54435 8.52864 6.8047L12.7239 11L8.52864 15.1952C8.26829 15.4556 8.26829 15.8777 8.52864 16.138C8.78899 16.3984 9.2111 16.3984 9.47145 16.138L14.1381 11.4714C14.2631 11.3463 14.3334 11.1768 14.3334 11C14.3334 10.8231 14.2631 10.6536 14.1381 10.5286L9.47145 5.86189C9.2111 5.60154 8.78899 5.60154 8.52864 5.86189Z" fill="#8F959E"/></svg>
+);
+
+const CM_ICONS = {
+  aiCreate: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .335c.234 0 .427.183.456.418.074.585.21 1.15.401 1.688l.268.657c.781 1.698 2.136 3.07 3.813 3.861l.648.272.212.073c.497.166 1.016.282 1.552.345.177.02.315.17.315.35l-.007.067a.344.344 0 01-.309.284l-.083.01a7.98 7.98 0 00-1.681.418l-.648.272c-1.676.791-3.031 2.163-3.813 3.861l-.267.657a7.98 7.98 0 00-.401 1.688l-.018.085a.354.354 0 01-.438.333l-.085-.009a.344.344 0 01-.353-.173l-.018-.085a7.98 7.98 0 00-.401-1.688l-.268-.657c-.781-1.698-2.136-3.07-3.813-3.861l-.648-.272a7.98 7.98 0 00-1.535-.388l-.229-.03a.354.354 0 01-.315-.35c0-.181.138-.331.315-.351a7.98 7.98 0 001.552-.345l.212-.073.648-.272c1.676-.791 3.031-2.163 3.813-3.861l.267-.657A7.98 7.98 0 007.544.753C7.573.518 7.766.335 8 .335z" fill="url(#ai_g)"/><defs><linearGradient id="ai_g" x1=".335" y1="15.665" x2="15.665" y2="15.665" gradientUnits="userSpaceOnUse"><stop stopColor="#4752E6"/><stop offset="1" stopColor="#CF5ECF"/></linearGradient></defs></svg>
+  ),
+  template: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M7.434 1.69c.128-.496.616-.791 1.091-.658l5.147 1.441c.475.133.757.643.63 1.14l-1.38 5.378a.874.874 0 01-.516.617l-1.696-3.071c-.428-.776-1.5-.776-1.929 0L7.703 8.493l-1.018-.285c-.475-.133-.757-.643-.63-1.14L7.434 1.69z" fill="#447CFD"/><path d="M9.554 7.003a.222.222 0 01.386 0l3.855 6.981a.222.222 0 01-.193.35H5.893a.222.222 0 01-.193-.35l3.854-6.981z" fill="#447CFD"/><path d="M5.66 5.012a3.946 3.946 0 00-.762-.078c-2.153 0-3.898 1.823-3.898 4.073 0 2.249 1.745 4.073 3.898 4.073.093 0 .186-.004.277-.01l2.066-3.742--.787-.22c-.95-.267-1.514-1.288-1.26-2.281l.466-1.815z" fill="#91BDFD"/></svg>
+  ),
+  table: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.333 2.667C1.333 1.93 1.93 1.333 2.667 1.333h10.666C14.07 1.333 14.667 1.93 14.667 2.667v10.666c0 .737-.597 1.334-1.334 1.334H2.667c-.737 0-1.334-.597-1.334-1.334V2.667zm1.334 0v10.666h10.666V2.667H2.667z" fill="#8D55ED"/><path d="M8.333 4.667a.667.667 0 000 1.333h3a.667.667 0 000-1.333h-3z" fill="#8D55ED"/><path d="M4 5.333a.667.667 0 01.667-.666h1.333a.667.667 0 010 1.333H4.667A.667.667 0 014 5.333z" fill="#8D55ED"/><path d="M8.333 7.333a.667.667 0 000 1.334h3a.667.667 0 000-1.334h-3z" fill="#8D55ED"/><path d="M4 8a.667.667 0 01.667-.667h1.333a.667.667 0 010 1.334H4.667A.667.667 0 014 8z" fill="#8D55ED"/><path d="M8.333 10a.667.667 0 100 1.333h3a.667.667 0 100-1.333h-3z" fill="#8D55ED"/><path d="M4 10.667A.667.667 0 014.667 10h1.333a.667.667 0 010 1.333H4.667A.667.667 0 014 10.667z" fill="#8D55ED"/></svg>
+  ),
+  form: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.139 4.529a.667.667 0 010 .942L7.805 8.805a.667.667 0 01-.943 0L4.978 6.92a.667.667 0 01.943-.943l1.413 1.414 3.862-3.862a.667.667 0 01.943 0z" fill="#FF811A"/><path d="M4.333 11a.667.667 0 01.667-.667h6a.667.667 0 010 1.334H5a.667.667 0 01-.667-.667z" fill="#FF811A"/><path d="M1.333 2.667C1.333 1.93 1.93 1.333 2.667 1.333h10.666C14.07 1.333 14.667 1.93 14.667 2.667v10.666c0 .737-.597 1.334-1.334 1.334H2.667c-.737 0-1.334-.597-1.334-1.334V2.667zm1.334 0v10.666h10.666V2.667H2.667z" fill="#FF811A"/></svg>
+  ),
+  dashboard: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.33 3.201c-.23-.266-.631-.307-.887-.067C2.145 4.351 1.333 6.081 1.333 8c0 3.682 2.985 6.667 6.667 6.667 3.682 0 6.667-2.985 6.667-6.667 0-3.682-2.985-6.667-6.667-6.667-.024 0-.048 0-.072.001-.338.003-.595.29-.595.629V4c0 .368.299.667.667.667A.667.667 0 008.667 4V2.708c2.631.328 4.666 2.572 4.666 5.292 0 2.946-2.387 5.333-5.333 5.333S2.667 10.946 2.667 8c0-1.487.608-2.833 1.591-3.8.273-.269.323-.709.072-.999z" fill="#5B65F5"/><path d="M8.712 7.32c-.102-.103-2.958-1.915-2.958-1.915a.222.222 0 00-.345.153.222.222 0 00.04.176l.017.018s1.812 2.858 1.914 2.96A.99.99 0 008.016 9a.99.99 0 00.696-.288.993.993 0 000-1.392z" fill="#5B65F5"/></svg>
+  ),
+  workflow: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.203 11h7.594c.167-.1.346-.18.536-.237V9.333a.667.667 0 00-.666-.667H4.333a.667.667 0 00-.666.667v1.43c.19.057.369.137.536.237zM2.333 10.763V9.333c0-.53.211-1.04.586-1.415A2 2 0 014.333 7.333h3V5.915A2 2 0 015.793 4.83a2 2 0 01-.438-1.833 2 2 0 01.882-1.665A2 2 0 018 .667c.649 0 1.276.237 1.763.665a2 2 0 01.883 1.665 2 2 0 01-.439 1.833A2 2 0 018.667 5.915v1.418h3a2 2 0 011.414.585c.375.375.586.886.586 1.415v1.43a2 2 0 011.26 1.92c-.044.533-.27 1.036-.64 1.422-.37.387-.861.634-1.393.702a2 2 0 01-1.524-.333 2 2 0 01-.974-1.218 2 2 0 01.011-1.56 2 2 0 01.99-1.128H4.203a2 2 0 01.99 1.128 2 2 0 01.012 1.56 2 2 0 01-.974 1.218 2 2 0 01-1.524.333 2 2 0 01-1.393-.702 2 2 0 01-.64-1.422 2 2 0 011.66-2.08zM8 4.666a1.333 1.333 0 100-2.667 1.333 1.333 0 000 2.667zM13 14a1 1 0 100-2 1 1 0 000 2zM3 14a1 1 0 100-2 1 1 0 000 2z" fill="#8D55ED"/></svg>
+  ),
+  doc: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.667 2h8.396c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H4.937a2.26 2.26 0 01-1.626-.64A2.098 2.098 0 012.667 11.882V2zM2 .667A.667.667 0 001.333 1.333v10.549c0 .915.38 1.793 1.056 2.44A3.594 3.594 0 004.937 15.333H14a.667.667 0 00.667-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.063.667H2z" fill="#336DF4"/><path d="M4.5 5.333a.667.667 0 01.667-.666h5.666a.667.667 0 010 1.333H5.167a.667.667 0 01-.667-.667z" fill="#336DF4"/><path d="M4.5 8a.667.667 0 01.667-.667h5.666a.667.667 0 010 1.334H5.167A.667.667 0 014.5 8z" fill="#336DF4"/><path d="M4.5 10.667a.667.667 0 01.667-.667h3a.667.667 0 010 1.333h-3a.667.667 0 01-.667-.666z" fill="#336DF4"/></svg>
+  ),
+  folder: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5.575 6.285L8 8.71l2.422-2.422a.494.494 0 01.813.715L8.202 10.124a.286.286 0 01-.404 0L4.767 7.093a.494.494 0 01.808-.808z" fill="#5B65F5"/><path d="M1.333 2.667C1.333 1.93 1.93 1.333 2.667 1.333h10.666C14.07 1.333 14.667 1.93 14.667 2.667v10.666c0 .737-.597 1.334-1.334 1.334H2.667c-.737 0-1.334-.597-1.334-1.334V2.667zm12 10.666V2.667H2.667v10.666h10.666z" fill="#5B65F5"/></svg>
+  ),
+  transfer: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.333 2h8.397c.62 0 1.204.237 1.626.64.42.403.644.935.644 1.478V14H7.162l-1.334 1.333h8.839a.667.667 0 00.666-.666V4.118c0-.915-.38-1.793-1.056-2.44A3.594 3.594 0 0011.73.667H2.667A.667.667 0 002 1.333v6.894a1.18 1.18 0 01.252-.308c.306-.305.685-.491 1.081-.554V2z" fill="#2DBEAB"/><path d="M5.828 8.667l-.747-.748a1.037 1.037 0 00-.197-.173.667.667 0 01.616-.413h1a.667.667 0 010 1.334h-.672z" fill="#2DBEAB"/><path d="M4.833 5.333a.667.667 0 01.667-.666h1a.667.667 0 010 1.333h-1a.667.667 0 01-.667-.667z" fill="#2DBEAB"/><path d="M8.833 4.667a.667.667 0 000 1.333h3a.667.667 0 000-1.333h-3z" fill="#2DBEAB"/><path d="M8.167 8a.667.667 0 01.666-.667h3a.667.667 0 010 1.334h-3A.667.667 0 018.167 8z" fill="#2DBEAB"/><path d="M8.833 10a.667.667 0 100 1.333h3a.667.667 0 100-1.333h-3z" fill="#2DBEAB"/><path d="M6.805 11.529a.667.667 0 010 .942l-2.667 2.667a.667.667 0 01-.943-.943L4.724 12.667H1a.667.667 0 010-1.334h3.724L3.195 9.805a.667.667 0 01.943-.943l2.667 2.667z" fill="#2DBEAB"/></svg>
+  ),
+  app: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.954 10.027c.261.102.562.203.898.292l-.59 1.18a.534.534 0 01-.894-.298l.515-1.03c.113.05.236.104.37.155z" fill="#336DF4"/><path d="M7.702 3.937a.534.534 0 01.894.297l3.334 6.667a.534.534 0 01-.894.597L7.404 4.831a.534.534 0 01.298-.894z" fill="#336DF4"/><path d="M3.783 8.158a.534.534 0 01.926-.176s.003.002.005.003l.037.026a5.15 5.15 0 00.166.096c.11.06.259.136.444.216a5.96 5.96 0 00.197.082c.009.003.018.007.027.011a5.47 5.47 0 00.446.166c.19.058.396.113.618.159a5.97 5.97 0 001.352 0 6.45 6.45 0 00.939-.069l.623 1.246a7.36 7.36 0 01-1.562.156c-.822 0-1.549-.13-2.151-.298l-.11-.03a7.65 7.65 0 01-.139-.043 6.03 6.03 0 01-.151-.049 5.2 5.2 0 01-.115-.039 5.98 5.98 0 01-.236-.081 5.76 5.76 0 01-.822-.62 3.41 3.41 0 01-.227-.14 1.67 1.67 0 01-.063-.057l-.002-.002-.001-.001-.001 0a.534.534 0 01.204-.834z" fill="#336DF4"/><path d="M11.292 7.982a.534.534 0 01.925.176c.207.304.129.718-.176.926l-.001 0-.001.001-.002.002a1.67 1.67 0 01-.063.057 3.41 3.41 0 01-.227.14l-.147.086-.597-1.194c.031-.015.06-.028.085-.04a2.9 2.9 0 00.166-.096l.037-.026.002-.003z" fill="#336DF4"/><path d="M7.045 5.01l.73 1.462-.941 1.882a4.4 4.4 0 01-.62-.248 4.07 4.07 0 01-.19-.078l1.492-2.983.032.021c.005.01.009.02.014.03l-.002-.016-.515-.068z" fill="#336DF4"/><path d="M11.063.667c.957 0 1.873.364 2.549 1.011.676.647 1.055 1.525 1.055 2.44v10.549a.667.667 0 01-.667.666H4.937a3.594 3.594 0 01-2.548-1.011A3.432 3.432 0 011.333 11.882V1.333A.667.667 0 012 .667h9.063zM2.667 11.882c0 .542.224 1.075.644 1.477.422.404 1.006.641 1.626.641H13.333V4.118c0-.543-.224-1.075-.644-1.477A2.26 2.26 0 0011.063 2H2.667v9.882z" fill="#336DF4"/></svg>
+  ),
+};
+
+const SIDEBAR_WIDTH_KEY = "sidebar_width";
+const SIDEBAR_MIN_W = 120;
+const SIDEBAR_MAX_W = 400;
+const SIDEBAR_DEFAULT_W = 190;
+
+export default function Sidebar({ items, onRenameItem, activeItemId, onSelectItem, onCreateTable, onReorderTables, onDeleteTable, tableCount }: Props) {
   const { t } = useTranslation();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const moreRefs = useRef<Map<string, HTMLSpanElement>>(new Map());
+  const newBtnRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const menuItems = [
+  // ── Sidebar resize state ──
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    return stored ? Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, Number(stored))) : SIDEBAR_DEFAULT_W;
+  });
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startW: sidebarWidth };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const newW = Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, resizeRef.current.startW + ev.clientX - resizeRef.current.startX));
+      setSidebarWidth(newW);
+    };
+    const onMouseUp = (ev: MouseEvent) => {
+      if (resizeRef.current) {
+        const finalW = Math.max(SIDEBAR_MIN_W, Math.min(SIDEBAR_MAX_W, resizeRef.current.startW + ev.clientX - resizeRef.current.startX));
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(finalW));
+      }
+      resizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [sidebarWidth]);
+
+  // Drag state
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dragOverPos, setDragOverPos] = useState<"above" | "below" | null>(null);
+  const dragRef = useRef<{
+    tableId: string;
+    startY: number;
+    isDragging: boolean;
+    rects: Map<string, DOMRect>;
+  } | null>(null);
+  // Use refs for drop target so mouseup handler sees latest values
+  const dragOverIdRef = useRef<string | null>(null);
+  const dragOverPosRef = useRef<"above" | "below" | null>(null);
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const tableItems = items.filter(i => i.type === "table");
+  const staticItems = items.filter(i => i.type === "static");
+
+  const getContextMenuItems = (item: SidebarItem): MenuItem[] => [
     { key: "rename", label: t("contextMenu.rename"), icon: <RenameIcon /> },
+    ...(item.type === "table" ? [{ key: "delete", label: t("contextMenu.delete"), icon: <DeleteIcon /> }] : []),
   ];
 
+  const createMenuItems: MenuItem[] = [
+    { key: "ai_create", label: t("createMenu.aiCreate"), section: t("createMenu.quickCreate"), icon: CM_ICONS.aiCreate, suffix: ARROW_RIGHT, noop: true },
+    { key: "template", label: t("createMenu.template"), icon: CM_ICONS.template, suffix: ARROW_RIGHT, noop: true },
+    { key: "table", label: t("createMenu.table"), section: t("createMenu.new"), icon: CM_ICONS.table },
+    { key: "form", label: t("createMenu.form"), icon: CM_ICONS.form, suffix: ARROW_RIGHT, noop: true },
+    { key: "cm_dashboard", label: t("createMenu.dashboard"), icon: CM_ICONS.dashboard, noop: true },
+    { key: "cm_workflow", label: t("createMenu.workflow"), icon: CM_ICONS.workflow, noop: true },
+    { key: "doc", label: t("createMenu.doc"), icon: CM_ICONS.doc, noop: true },
+    { key: "folder", label: t("createMenu.folder"), section: t("createMenu.manage"), icon: CM_ICONS.folder, noop: true },
+    { key: "import", label: t("createMenu.import"), icon: CM_ICONS.transfer, suffix: ARROW_RIGHT, noop: true },
+    { key: "app", label: t("createMenu.app"), section: t("createMenu.appSection"), icon: CM_ICONS.app, suffix: ARROW_RIGHT, noop: true },
+  ];
+
+  // ── Drag handlers (table items only) ──
+  const handleDragMouseDown = useCallback((e: React.MouseEvent, tableId: string) => {
+    // Only left mouse button
+    if (e.button !== 0) return;
+    e.preventDefault();
+
+    const rects = new Map<string, DOMRect>();
+    itemRefs.current.forEach((el, id) => rects.set(id, el.getBoundingClientRect()));
+
+    dragRef.current = {
+      tableId,
+      startY: e.clientY,
+      isDragging: false,
+      rects,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dy = ev.clientY - dragRef.current.startY;
+
+      if (!dragRef.current.isDragging && Math.abs(dy) < DRAG_THRESHOLD) return;
+
+      if (!dragRef.current.isDragging) {
+        dragRef.current.isDragging = true;
+        setDragId(tableId);
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      }
+
+      // Find hover target
+      let overId: string | null = null;
+      let overPos: "above" | "below" | null = null;
+      dragRef.current.rects.forEach((r, id) => {
+        if (id === tableId) return;
+        // Only consider table items
+        if (!tableItems.some(t => t.id === id)) return;
+        if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
+          overId = id;
+          overPos = ev.clientY < r.top + r.height / 2 ? "above" : "below";
+        }
+      });
+      setDragOverId(overId);
+      setDragOverPos(overPos);
+      dragOverIdRef.current = overId;
+      dragOverPosRef.current = overPos;
+    };
+
+    const onMouseUp = () => {
+      if (dragRef.current?.isDragging && dragOverIdRef.current && dragOverPosRef.current) {
+        const currentOrder = tableItems.map(t => t.id);
+        const arr = [...currentOrder];
+        const fromIdx = arr.indexOf(tableId);
+        arr.splice(fromIdx, 1);
+        let toIdx = arr.indexOf(dragOverIdRef.current);
+        if (dragOverPosRef.current === "below") toIdx += 1;
+        arr.splice(toIdx, 0, tableId);
+
+        const updates = arr.map((id, i) => ({ id, order: i }));
+        onReorderTables(updates);
+      }
+
+      dragRef.current = null;
+      setDragId(null);
+      setDragOverId(null);
+      setDragOverPos(null);
+      dragOverIdRef.current = null;
+      dragOverPosRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [tableItems, onReorderTables]);
+
+  const getIcon = (item: SidebarItem) => {
+    if (item.type === "table") return ICONS.table;
+    return ICONS[item.id] ?? ICONS.table;
+  };
+
+  const renderItem = (item: SidebarItem) => {
+    const isDragging = dragId === item.id;
+    const isOver = dragOverId === item.id;
+    let className = `sidebar-item${item.active ? " active" : ""}`;
+    if (isDragging) className += " is-dragging";
+    if (isOver && dragOverPos === "above") className += " drag-over-above";
+    if (isOver && dragOverPos === "below") className += " drag-over-below";
+
+    return (
+      <div
+        key={item.id}
+        ref={(el) => { if (el) itemRefs.current.set(item.id, el); else itemRefs.current.delete(item.id); }}
+        className={className}
+        onClick={() => onSelectItem(item.id)}
+        onMouseDown={item.type === "table" ? (e) => handleDragMouseDown(e, item.id) : undefined}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          setEditingItemId(item.id);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenuItemId(menuItemId === item.id ? null : item.id);
+        }}
+      >
+        <span className="sidebar-icon">{getIcon(item)}</span>
+        <span className="sidebar-label">
+          <InlineEdit
+            value={item.displayName}
+            isEditing={editingItemId === item.id}
+            onStartEdit={() => setEditingItemId(item.id)}
+            onSave={(name) => {
+              setEditingItemId(null);
+              onRenameItem(item.id, name);
+            }}
+            onCancelEdit={() => setEditingItemId(null)}
+            className="sidebar-edit"
+          />
+        </span>
+        <span
+          className="sidebar-item-more"
+          role="button"
+          title={t("topbar.more")}
+          ref={(el) => { if (el) moreRefs.current.set(item.id, el); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuItemId(menuItemId === item.id ? null : item.id);
+          }}
+        >
+          <svg width="14" height="14" viewBox="207 119 4 14" fill="none">
+            <path d="M209 122.208C208.436 122.208 207.979 121.751 207.979 121.187C207.979 120.624 208.436 120.167 209 120.167C209.564 120.167 210.021 120.624 210.021 121.187C210.021 121.751 209.564 122.208 209 122.208Z" fill="currentColor"/>
+            <path d="M209 127.006C208.436 127.006 207.979 126.549 207.979 125.985C207.979 125.422 208.436 124.965 209 124.965C209.564 124.965 210.021 125.422 210.021 125.985C210.021 126.549 209.564 127.006 209 127.006Z" fill="currentColor"/>
+            <path d="M209 131.833C208.436 131.833 207.979 131.376 207.979 130.812C207.979 130.249 208.436 129.792 209 129.792C209.564 129.792 210.021 130.249 210.021 130.812C210.021 131.376 209.564 131.833 209 131.833Z" fill="currentColor"/>
+          </svg>
+        </span>
+        {menuItemId === item.id && moreRefs.current.get(item.id) && (
+          <DropdownMenu
+            items={getContextMenuItems(item)}
+            anchorEl={moreRefs.current.get(item.id)!}
+            onSelect={(key) => {
+              if (key === "rename") setEditingItemId(item.id);
+              if (key === "delete") setDeleteConfirmId(item.id);
+            }}
+            onClose={() => setMenuItemId(null)}
+            width={180}
+          />
+        )}
+      </div>
+    );
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width: sidebarWidth }}>
+      <div className="sidebar-resize-handle" onMouseDown={handleResizeMouseDown} />
       <div className="sidebar-header">
         <div className="sidebar-search-trigger">
           <svg className="sidebar-search-icon" width="14" height="14" viewBox="20 80 15 15" fill="none">
@@ -61,66 +326,47 @@ export default function Sidebar({ items, onRenameItem }: Props) {
         </div>
       </div>
       <div className="sidebar-nav">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className={`sidebar-item ${item.active ? "active" : ""}`}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              setEditingItemId(item.id);
-            }}
-          >
-            <span className="sidebar-icon">{ICONS[item.id]}</span>
-            <span className="sidebar-label">
-              <InlineEdit
-                value={item.displayName}
-                isEditing={editingItemId === item.id}
-                onStartEdit={() => setEditingItemId(item.id)}
-                onSave={(name) => {
-                  setEditingItemId(null);
-                  onRenameItem(item.id, name);
-                }}
-                onCancelEdit={() => setEditingItemId(null)}
-                className="sidebar-edit"
-              />
-            </span>
-            <span
-              className="sidebar-item-more"
-              role="button"
-              title={t("topbar.more")}
-              ref={(el) => { if (el) moreRefs.current.set(item.id, el); }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuItemId(menuItemId === item.id ? null : item.id);
-              }}
-            >
-              <svg width="14" height="14" viewBox="207 119 4 14" fill="none">
-                <path d="M209 122.208C208.436 122.208 207.979 121.751 207.979 121.187C207.979 120.624 208.436 120.167 209 120.167C209.564 120.167 210.021 120.624 210.021 121.187C210.021 121.751 209.564 122.208 209 122.208Z" fill="currentColor"/>
-                <path d="M209 127.006C208.436 127.006 207.979 126.549 207.979 125.985C207.979 125.422 208.436 124.965 209 124.965C209.564 124.965 210.021 125.422 210.021 125.985C210.021 126.549 209.564 127.006 209 127.006Z" fill="currentColor"/>
-                <path d="M209 131.833C208.436 131.833 207.979 131.376 207.979 130.812C207.979 130.249 208.436 129.792 209 129.792C209.564 129.792 210.021 130.249 210.021 130.812C210.021 131.376 209.564 131.833 209 131.833Z" fill="currentColor"/>
-              </svg>
-            </span>
-            {menuItemId === item.id && moreRefs.current.get(item.id) && (
-              <DropdownMenu
-                items={menuItems}
-                anchorEl={moreRefs.current.get(item.id)!}
-                onSelect={(key) => {
-                  if (key === "rename") setEditingItemId(item.id);
-                }}
-                onClose={() => setMenuItemId(null)}
-              />
-            )}
-          </div>
-        ))}
+        {tableItems.map(renderItem)}
+        {staticItems.map(renderItem)}
       </div>
       <div className="sidebar-footer">
-        <button className="sidebar-new-btn">
+        <button
+          ref={newBtnRef}
+          className="sidebar-new-btn"
+          onClick={() => setNewMenuOpen(prev => !prev)}
+        >
           <svg width="14" height="14" viewBox="97.5 861.5 13 13" fill="none">
             <path d="M104 862.167C103.678 862.167 103.417 862.428 103.417 862.75V867.417H98.75C98.4278 867.417 98.1666 867.678 98.1666 868C98.1666 868.322 98.4278 868.583 98.75 868.583H103.417V873.25C103.417 873.572 103.678 873.833 104 873.833C104.322 873.833 104.583 873.572 104.583 873.25V868.583H109.25C109.572 868.583 109.833 868.322 109.833 868C109.833 867.678 109.572 867.417 109.25 867.417H104.583V862.75C104.583 862.428 104.322 862.167 104 862.167Z" fill="currentColor"/>
           </svg>
           {t("sidebar.new")}
         </button>
+        {newMenuOpen && newBtnRef.current && (
+          <DropdownMenu
+            items={createMenuItems}
+            anchorEl={newBtnRef.current}
+            onSelect={(key) => {
+              if (key === "table") onCreateTable();
+              setNewMenuOpen(false);
+            }}
+            onClose={() => setNewMenuOpen(false)}
+            position="above"
+            width={240}
+          />
+        )}
       </div>
+      <ConfirmDialog
+        open={!!deleteConfirmId}
+        title={t("app.deleteTable")}
+        message={t("app.deleteTableMsg", { name: items.find(i => i.id === deleteConfirmId)?.displayName ?? "" })}
+        confirmLabel={t("confirm.delete")}
+        cancelLabel={t("confirm.cancel")}
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirmId) onDeleteTable(deleteConfirmId);
+          setDeleteConfirmId(null);
+        }}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </aside>
   );
 }
@@ -129,6 +375,14 @@ function RenameIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
       <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M6 2a1 1 0 00-1 1h6a1 1 0 00-1-1H6zM4 4h8v9a1 1 0 01-1 1H5a1 1 0 01-1-1V4zM3 4h10V3H3v1zM6.5 6v5M9.5 6v5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   );
 }

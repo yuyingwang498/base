@@ -1,25 +1,48 @@
+/* Figma: [D]Base/MainNavigation/NewFile — token/bg/float, token/line/border-card, [D] shadow/s4/down */
 .dropdown-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--color-white);
-  border: 1px solid var(--color-border);
+  background: #FFFFFF;
+  border: 1px solid #DEE0E3;
   border-radius: 8px;
-  box-shadow: var(--shadow-dropdown);
-  padding: 4px;
+  box-shadow:
+    0 4px 8px -8px rgba(31, 35, 41, 0.06),
+    0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 8px rgba(31, 35, 41, 0.04);
+  padding: 8px;
   min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
+/* Section group container */
+.dropdown-menu-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Items within a group — Figma gap=2 */
+.dropdown-menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Figma: _Dropdown-item — h=34, gap=6, radius/m 6px */
 .dropdown-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: var(--radius-s);
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 6px;
   cursor: pointer;
   font-family: var(--font-family);
   font-size: 14px;
-  color: var(--color-text-primary);
+  line-height: 22px;
+  font-weight: 400;
+  color: #1F2329;
   white-space: nowrap;
   width: 100%;
   text-align: left;
@@ -31,9 +54,54 @@
   background: var(--color-bg-hover);
 }
 
+.dropdown-menu-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dropdown-menu-item.disabled:hover {
+  background: none;
+}
+
+/* Items with suffix arrow get less right padding */
+.dropdown-menu-item.has-suffix {
+  padding-right: 4px;
+}
+
+/* Figma: icon 16x16, color token/icon/n2 #646A73 for monochrome icons */
 .dropdown-menu-item-icon {
   flex-shrink: 0;
-  color: var(--color-text-secondary);
+  color: #646A73;
   display: flex;
   align-items: center;
+}
+
+/* Label takes remaining space */
+.dropdown-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Suffix (right arrow etc.) */
+.dropdown-menu-item-suffix {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Figma: _Select-option Type=title — 12px/20px Medium 500, palette/neutral/500 #8F959E */
+.dropdown-menu-section {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+  color: #8F959E;
+  white-space: nowrap;
 }
