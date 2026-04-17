@@ -1133,7 +1133,7 @@ export default function App() {
             {editFieldState && (
               <AddFieldPopover
                 key={editFieldState.fieldId}
-                currentTableId={TABLE_ID}
+                currentTableId={activeTableId}
                 currentFields={fields}
                 anchorRect={editFieldState.anchorRect}
                 onCancel={() => setEditFieldState(null)}
