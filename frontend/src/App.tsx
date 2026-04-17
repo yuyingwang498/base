@@ -700,7 +700,7 @@ export default function App() {
 
   // Add-field popover state
   const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
-  const fieldSuggestions = useFieldSuggestions(activeTableIdRef.current);
+  const fieldSuggestions = useFieldSuggestions(activeTableId);
 
   // Edit-field popover state
   const [editFieldState, setEditFieldState] = useState<{ fieldId: string; anchorRect: DOMRect } | null>(null);
