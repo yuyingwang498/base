@@ -7,6 +7,7 @@ import { validateCellValue } from "../services/fieldValidator.js";
 import { validateLookupConfig } from "../services/lookupValidator.js";
 import { Field, ViewFilter, ViewSort, LookupConfig } from "../types.js";
 import { eventBus } from "../services/eventBus.js";
+import { warmupSuggestions, invalidateSuggestionCache } from "../services/fieldSuggestService.js";
 
 function getClientId(req: Request): string {
   return (req.headers["x-client-id"] as string) || "unknown";
@@ -107,6 +108,8 @@ router.put("/:tableId", async (req: Request, res: Response) => {
 router.get("/:tableId/fields", async (req: Request, res: Response) => {
   const table = await store.getTable(req.params.tableId);
   if (!table) { res.status(404).json({ error: "Table not found" }); return; }
+  // Fire-and-forget: warm up AI field suggestions cache for this table
+  warmupSuggestions(req.params.tableId);
   res.json(table.fields);
 });
 
@@ -135,6 +138,7 @@ router.post("/:tableId/fields", async (req: Request, res: Response) => {
   const field = await store.createField(req.params.tableId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Table not found" }); return; }
   eventBus.emitChange({ type: "field:create", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { field } });
+  invalidateSuggestionCache(req.params.tableId);
   res.status(201).json(field);
 });
 
@@ -161,6 +165,7 @@ router.put("/:tableId/fields/:fieldId", async (req: Request, res: Response) => {
   const field = await store.updateField(req.params.tableId, req.params.fieldId, { name, type, config });
   if (!field) { res.status(404).json({ error: "Field not found" }); return; }
   eventBus.emitChange({ type: "field:update", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId, changes: { name, type, config } } });
+  invalidateSuggestionCache(req.params.tableId);
   res.json(field);
 });
 
@@ -171,6 +176,7 @@ router.delete("/:tableId/fields/:fieldId", async (req: Request, res: Response) =
     return;
   }
   eventBus.emitChange({ type: "field:delete", tableId: req.params.tableId, clientId: getClientId(req), timestamp: Date.now(), payload: { fieldId: req.params.fieldId } });
+  invalidateSuggestionCache(req.params.tableId);
   res.json({ ok: true });
 });
 

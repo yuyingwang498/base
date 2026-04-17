@@ -22,6 +22,25 @@ export interface SuggestFieldsResponse {
   hasMore: boolean;
 }
 
+// ─── Cache ───
+// Per-table in-memory cache. Populated by warmup (fire-and-forget), served instantly by suggest.
+
+interface CacheEntry {
+  suggestions: FieldSuggestion[];
+  timestamp: number;
+  generating: boolean;  // true = LLM call in-flight
+}
+
+const cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function isCacheValid(entry: CacheEntry | undefined): entry is CacheEntry {
+  if (!entry) return false;
+  if (entry.generating) return false;
+  if (entry.suggestions.length === 0) return false;
+  return Date.now() - entry.timestamp < CACHE_TTL;
+}
+
 // ─── System Prompt ───
 
 const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
@@ -71,32 +90,19 @@ const FIELD_SUGGEST_SYSTEM_PROMPT = `# 角色
 示例输出：
 [{"name":"负责人","type":"User"},{"name":"状态","type":"SingleSelect"},{"name":"截止日期","type":"DateTime"}]`;
 
-// ─── Main function ───
+// ─── Core LLM call (no cache) ───
 
-export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestFieldsResponse> {
+async function callLLM(tableId: string): Promise<FieldSuggestion[]> {
   const apiKey = process.env.ARK_API_KEY;
-  if (!apiKey) {
-    return { suggestions: [], hasMore: false };
-  }
+  if (!apiKey) return [];
 
-  // 1. Load table info
-  const table = await store.getTable(req.tableId);
-  if (!table) {
-    return { suggestions: [], hasMore: false };
-  }
+  const table = await store.getTable(tableId);
+  if (!table) return [];
 
   const tableName = table.name;
   const existingFieldNames = table.fields.map((f) => f.name);
+  const userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n请推荐 8-12 个合适的新字段。`;
 
-  // 2. Build user message
-  let userMessage: string;
-  if (req.title?.trim()) {
-    userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n用户正在创建的字段标题：${req.title}\n请根据标题推断字段类型，并推荐 8-12 个其他合适的新字段。`;
-  } else {
-    userMessage = `数据表名：${tableName}\n已有字段：${existingFieldNames.join(", ")}\n请推荐 8-12 个合适的新字段。`;
-  }
-
-  // 3. Call ARK API
   try {
     const response = await fetch(`${ARK_BASE_URL}/responses`, {
       method: "POST",
@@ -118,14 +124,13 @@ export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestF
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[fieldSuggestService] API ${response.status}: ${errorBody}`);
-      return { suggestions: [], hasMore: false };
+      console.error(`[fieldSuggest] API ${response.status}: ${await response.text()}`);
+      return [];
     }
 
     const data = await response.json() as Record<string, any>;
 
-    // 4. Extract text from response (Responses API format)
+    // Extract text
     let text: string | null = null;
     if (Array.isArray(data?.output)) {
       for (const item of data.output) {
@@ -138,52 +143,82 @@ export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestF
         if (text) break;
       }
     }
-    // Chat completions fallback
     if (!text && data?.choices?.[0]?.message?.content) {
       text = data.choices[0].message.content;
     }
-    if (!text) {
-      console.error("[fieldSuggestService] No text in API response:", JSON.stringify(data).slice(0, 500));
-      return { suggestions: [], hasMore: false };
-    }
+    if (!text) return [];
 
-    // 5. Parse JSON array
+    // Parse JSON
     let parsed: FieldSuggestion[];
     try {
       parsed = JSON.parse(text.trim());
     } catch {
-      // Try to extract JSON array from the response
       const match = text.match(/\[[\s\S]*\]/);
       if (match) {
-        try {
-          parsed = JSON.parse(match[0]);
-        } catch {
-          console.error("[fieldSuggestService] Failed to parse JSON from response:", text);
-          return { suggestions: [], hasMore: false };
-        }
+        try { parsed = JSON.parse(match[0]); } catch { return []; }
       } else {
-        console.error("[fieldSuggestService] No JSON array found in response:", text);
-        return { suggestions: [], hasMore: false };
+        return [];
       }
     }
 
-    if (!Array.isArray(parsed)) {
-      return { suggestions: [], hasMore: false };
-    }
+    if (!Array.isArray(parsed)) return [];
 
-    // 6. Filter out existing fields and excluded names
-    const excludeSet = new Set([
-      ...existingFieldNames,
-      ...(req.excludeNames || []),
-    ]);
-
-    const suggestions = parsed
-      .filter((s) => s && s.name && s.type && !excludeSet.has(s.name))
-      .map((s) => ({ name: s.name, type: s.type, ...(s.icon ? { icon: s.icon } : {}) }));
-
-    return { suggestions, hasMore: true };
+    // Filter out existing fields
+    const existingSet = new Set(existingFieldNames);
+    return parsed
+      .filter((s) => s && s.name && s.type && !existingSet.has(s.name))
+      .map((s) => ({ name: s.name, type: s.type }));
   } catch (err) {
-    console.error("[fieldSuggestService] Error:", err);
-    return { suggestions: [], hasMore: false };
+    console.error("[fieldSuggest] Error:", err);
+    return [];
   }
+}
+
+// ─── Warmup: called on table load, fire-and-forget ───
+
+export function warmupSuggestions(tableId: string): void {
+  const entry = cache.get(tableId);
+  if (isCacheValid(entry)) return;        // already cached & fresh
+  if (entry?.generating) return;           // already in-flight
+
+  // Mark as generating to prevent duplicate calls
+  cache.set(tableId, { suggestions: [], timestamp: 0, generating: true });
+
+  callLLM(tableId).then((suggestions) => {
+    cache.set(tableId, { suggestions, timestamp: Date.now(), generating: false });
+    console.log(`[fieldSuggest] Warmed up ${tableId}: ${suggestions.length} suggestions`);
+  }).catch(() => {
+    cache.delete(tableId);
+  });
+}
+
+// ─── Invalidate cache (call after field create/update/delete) ───
+
+export function invalidateSuggestionCache(tableId: string): void {
+  cache.delete(tableId);
+}
+
+// ─── Main function: returns cached if available, else generates ───
+
+export async function suggestFields(req: SuggestFieldsRequest): Promise<SuggestFieldsResponse> {
+  const entry = cache.get(req.tableId);
+
+  let suggestions: FieldSuggestion[];
+
+  if (isCacheValid(entry)) {
+    // Cache hit — instant response
+    suggestions = entry.suggestions;
+  } else {
+    // Cache miss — call LLM (blocks, but subsequent calls will be cached)
+    suggestions = await callLLM(req.tableId);
+    cache.set(req.tableId, { suggestions, timestamp: Date.now(), generating: false });
+  }
+
+  // Filter out excludeNames
+  if (req.excludeNames && req.excludeNames.length > 0) {
+    const excludeSet = new Set(req.excludeNames);
+    suggestions = suggestions.filter((s) => !excludeSet.has(s.name));
+  }
+
+  return { suggestions, hasMore: true };
 }
