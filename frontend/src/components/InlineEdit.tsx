@@ -27,8 +27,11 @@ export default function InlineEdit({
     if (isEditing) {
       setDraft(value);
       requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
       });
     }
   }, [isEditing, value]);
@@ -52,7 +55,7 @@ export default function InlineEdit({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
             e.preventDefault();
             inputRef.current?.blur();
           } else if (e.key === "Escape") {
