@@ -12,10 +12,9 @@
 }
 
 .data-table {
-  width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  min-width: 800px;
+  /* width is set via inline style: max(sum of col widths, container width) */
 }
 
 .data-table thead {
@@ -128,9 +127,8 @@
   opacity: 0.4;
 }
 
-/* Figma: first column 44px — header shows checkbox, data rows show row number (hover → checkbox) */
+/* Figma: first column 44px — width set via <col>, not here (table-layout:fixed ignores th width when col is set) */
 .col-index {
-  width: 44px !important;
   text-align: center !important;
   padding: 0 !important;
   cursor: default;
@@ -158,7 +156,6 @@
 }
 
 .col-add {
-  width: 136px;
   border-right: none !important;
   cursor: pointer;
 }

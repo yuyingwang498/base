@@ -9,15 +9,15 @@ import FieldConfigPanel from "./components/FieldConfigPanel/index";
 import { AddFieldPopover, useFieldSuggestions } from "./components/FieldConfig/AddFieldPopover";
 import "./App.css";
 import { Field, TableRecord, View, ViewFilter } from "./types";
-import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, CLIENT_ID } from "./api";
+import { fetchFields, fetchRecords, fetchViews, updateViewFilter, updateView, deleteField, deleteRecords, batchCreateRecords, batchDeleteFields, batchRestoreFields, updateRecord, renameTable, fetchDocument, renameDocument, fetchDocumentTables, createTable as apiCreateTable, reorderTables, deleteTable as apiDeleteTable, CLIENT_ID } from "./api";
 import type { SidebarItem } from "./components/Sidebar";
 import { useToast } from "./components/Toast/index";
 import { useTranslation } from "./i18n/index";
 import ConfirmDialog from "./components/ConfirmDialog/index";
 import { filterRecords } from "./services/filterEngine";
 import { useTableSync } from "./hooks/useTableSync";
+import { useDocumentSync } from "./hooks/useDocumentSync";
 
-const TABLE_ID = "tbl_requirements";
 const DOCUMENT_ID = "doc_default";
 
 const MAX_UNDO = 20;
@@ -35,6 +35,10 @@ export default function App() {
   const [activeViewId, setActiveViewId] = useState("view_all");
   const [tableName, setTableName] = useState("需求管理表");
   const [documentName, setDocumentName] = useState("Default Document");
+  const [activeTableId, setActiveTableId] = useState<string>("tbl_requirements");
+  const activeTableIdRef = useRef(activeTableId);
+  activeTableIdRef.current = activeTableId;
+  const [documentTables, setDocumentTables] = useState<Array<{ id: string; name: string; order: number }>>([]);
   const SIDEBAR_NAMES_KEY = "sidebar_item_names";
   const [sidebarNames, setSidebarNames] = useState<Record<string, string>>(() => {
     try {
@@ -80,7 +84,7 @@ export default function App() {
     setCanUndo(true);
   }, []);
   const [canUndo, setCanUndo] = useState(false);
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const toast = useToast();
 
   // View-level field order & visibility
@@ -105,31 +109,44 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
 
-  // Load initial data: fields, all records, views, table name
+  // Load initial data: document tables list, then active table data
   useEffect(() => {
-    Promise.all([
-      fetchFields(TABLE_ID),
-      fetchRecords(TABLE_ID),
-      fetchViews(TABLE_ID),
-      fetch("/api/tables").then(r => r.json()) as Promise<Array<{ id: string; name: string }>>,
-      fetchDocument(DOCUMENT_ID).catch(() => null),
-    ]).then(([f, r, v, tables, doc]) => {
+    const init = async () => {
+      const [tables, doc] = await Promise.all([
+        fetchDocumentTables(DOCUMENT_ID),
+        fetchDocument(DOCUMENT_ID).catch(() => null),
+      ]);
+      setDocumentTables(tables);
+      if (doc) setDocumentName(doc.name);
+
+      // Determine which table to activate
+      const lastActive = localStorage.getItem("lastActiveTableId");
+      const targetId = tables.find(t => t.id === lastActive)?.id ?? tables[0]?.id;
+      if (!targetId) return;
+
+      setActiveTableId(targetId);
+      const tbl = tables.find(t => t.id === targetId);
+      if (tbl) setTableName(tbl.name);
+
+      const [f, r, v] = await Promise.all([
+        fetchFields(targetId),
+        fetchRecords(targetId),
+        fetchViews(targetId),
+      ]);
       setFields(f);
       setAllRecords(r);
       setViews(v);
-      const tbl = tables.find(t => t.id === TABLE_ID);
-      if (tbl) setTableName(tbl.name);
-      if (doc) setDocumentName(doc.name);
-      // Store the initial saved filter from the active view
-      const activeView = v.find(view => view.id === "view_all");
+
+      const activeView = v[0];
       if (activeView) {
+        setActiveViewId(activeView.id);
         const viewFilter = activeView.filter ?? { logic: "and", conditions: [] };
         setSavedFilter(viewFilter);
         setFilter(viewFilter);
-        // Initialize field order & hidden fields from view
         initFieldOrderFromView(activeView, f);
       }
-    });
+    };
+    init();
   }, []);
 
   // Initialize fieldOrder & hiddenFields from a view
@@ -289,7 +306,7 @@ export default function App() {
       )
     );
     // Persist to backend
-    updateRecord(TABLE_ID, recordId, { [fieldId]: value })
+    updateRecord(activeTableIdRef.current, recordId, { [fieldId]: value })
       .catch(() => {
         // Rollback optimistic update
         setAllRecords(prev =>
@@ -329,7 +346,7 @@ export default function App() {
         return arr;
       });
       try {
-        await batchCreateRecords(TABLE_ID, item.records.map(r => ({
+        await batchCreateRecords(activeTableIdRef.current, item.records.map(r => ({
           id: r.id,
           cells: r.cells as Record<string, any>,
           createdAt: r.createdAt,
@@ -361,7 +378,7 @@ export default function App() {
       setViewFieldOrder(item.fieldOrderBefore);
       persistFieldOrder(item.fieldOrderBefore);
       try {
-        await batchRestoreFields(TABLE_ID, item.snapshot);
+        await batchRestoreFields(activeTableIdRef.current, item.snapshot);
       } catch {
         // Rollback: remove the fields we just restored
         const restoredIds = new Set(item.fieldDefs.map(f => f.id));
@@ -389,7 +406,7 @@ export default function App() {
         );
       });
       try {
-        await updateRecord(TABLE_ID, item.recordId, { [item.fieldId]: item.oldValue });
+        await updateRecord(activeTableIdRef.current, item.recordId, { [item.fieldId]: item.oldValue });
       } catch {
         // Rollback: revert to the newValue (what was before undo)
         setAllRecords(prev =>
@@ -422,7 +439,7 @@ export default function App() {
       try {
         await Promise.all(
           Array.from(restoreMap).map(([recordId, cells]) =>
-            updateRecord(TABLE_ID, recordId, cells)
+            updateRecord(activeTableIdRef.current, recordId, cells)
           )
         );
       } catch {
@@ -476,7 +493,7 @@ export default function App() {
     setAllRecords(prev => prev.filter(r => !idSet.has(r.id)));
 
     // API call — store promise so undo can wait for it
-    const deletePromise = deleteRecords(TABLE_ID, recordIds).catch(() => {
+    const deletePromise = deleteRecords(activeTableIdRef.current, recordIds).catch(() => {
       // Revert on failure — pop the item we just pushed
       undoStackRef.current.pop();
       setCanUndo(undoStackRef.current.length > 0);
@@ -510,7 +527,7 @@ export default function App() {
     const deletedFieldDefs = fields.filter(f => fieldIds.includes(f.id));
 
     try {
-      const result = await batchDeleteFields(TABLE_ID, fieldIds);
+      const result = await batchDeleteFields(activeTableIdRef.current, fieldIds);
       const deletedIds = new Set(result.snapshot.fieldDefs.map((f: Field) => f.id));
 
       // Compute incremental data for undo
@@ -619,7 +636,7 @@ export default function App() {
     for (const [recordId, fieldIds] of clearMap) {
       const nullCells: Record<string, null> = {};
       for (const fId of fieldIds) nullCells[fId] = null;
-      clearPromises.push(updateRecord(TABLE_ID, recordId, nullCells));
+      clearPromises.push(updateRecord(activeTableIdRef.current, recordId, nullCells));
     }
     Promise.all(clearPromises).catch(() => {
       // Rollback: restore old values
@@ -683,7 +700,7 @@ export default function App() {
 
   // Add-field popover state
   const [addFieldAnchor, setAddFieldAnchor] = useState<DOMRect | null>(null);
-  const fieldSuggestions = useFieldSuggestions(TABLE_ID);
+  const fieldSuggestions = useFieldSuggestions(activeTableIdRef.current);
 
   // Edit-field popover state
   const [editFieldState, setEditFieldState] = useState<{ fieldId: string; anchorRect: DOMRect } | null>(null);
@@ -700,7 +717,7 @@ export default function App() {
 
   const handleCreateFieldConfirm = useCallback(async (newField: Field) => {
     setFields((prev) => [...prev, newField]);
-    const r = await fetchRecords(TABLE_ID);
+    const r = await fetchRecords(activeTableIdRef.current);
     setAllRecords(r);
     setAddFieldAnchor(null);
   }, []);
@@ -710,7 +727,7 @@ export default function App() {
     const typeChanged = oldField && oldField.type !== updatedField.type;
     setFields((prev) => prev.map(f => f.id === updatedField.id ? updatedField : f));
     if (typeChanged) {
-      const r = await fetchRecords(TABLE_ID);
+      const r = await fetchRecords(activeTableIdRef.current);
       setAllRecords(r);
     }
     setEditFieldState(null);
@@ -753,7 +770,7 @@ export default function App() {
 
   const handleRemoteFieldCreate = useCallback((field: Field) => {
     setFields(prev => prev.some(f => f.id === field.id) ? prev : [...prev, field]);
-    fetchRecords(TABLE_ID).then(records => setAllRecords(records));
+    fetchRecords(activeTableIdRef.current).then(records => setAllRecords(records));
   }, []);
 
   const handleRemoteFieldUpdate = useCallback((fieldId: string, changes: { name?: string; config?: any }) => {
@@ -779,7 +796,7 @@ export default function App() {
       const newFields = restoredFields.filter(f => !existingIds.has(f.id));
       return newFields.length > 0 ? [...prev, ...newFields] : prev;
     });
-    fetchRecords(TABLE_ID).then(records => setAllRecords(records));
+    fetchRecords(activeTableIdRef.current).then(records => setAllRecords(records));
   }, []);
 
   const handleRemoteViewUpdate = useCallback((viewId: string, changes: Partial<View>) => {
@@ -799,7 +816,13 @@ export default function App() {
   }, []);
 
   const handleRemoteTableUpdate = useCallback((changes: { name?: string }) => {
-    if (changes.name) setTableName(changes.name);
+    if (changes.name) {
+      setTableName(changes.name);
+      // Also update documentTables for sidebar
+      setDocumentTables(prev => prev.map(t =>
+        t.id === activeTableIdRef.current ? { ...t, name: changes.name! } : t
+      ));
+    }
   }, []);
 
   const handleRemoteDocumentUpdate = useCallback((changes: { documentId: string; name: string }) => {
@@ -817,13 +840,17 @@ export default function App() {
   // ── Rename handlers ──
 
   const handleRenameSidebarItem = useCallback(async (itemId: string, newName: string) => {
-    if (itemId === "table") {
-      const oldName = tableName;
-      setTableName(newName);
+    const isTable = documentTables.some(t => t.id === itemId);
+    if (isTable) {
+      const oldName = documentTables.find(t => t.id === itemId)?.name ?? "";
+      // Optimistic update
+      setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, name: newName } : t));
+      if (itemId === activeTableIdRef.current) setTableName(newName);
       try {
-        await renameTable(TABLE_ID, newName);
+        await renameTable(itemId, newName);
       } catch {
-        setTableName(oldName);
+        setDocumentTables(prev => prev.map(t => t.id === itemId ? { ...t, name: oldName } : t));
+        if (itemId === activeTableIdRef.current) setTableName(oldName);
         toast.error(t("toast.renameFailed"));
       }
     } else {
@@ -833,7 +860,7 @@ export default function App() {
         return next;
       });
     }
-  }, [tableName, toast, t]);
+  }, [documentTables, toast, t]);
 
   const handleRenameDocument = useCallback(async (newName: string) => {
     const oldName = documentName;
@@ -851,18 +878,142 @@ export default function App() {
     try {
       await updateView(viewId, { name: newName });
     } catch {
-      fetchViews(TABLE_ID).then(setViews);
+      fetchViews(activeTableIdRef.current).then(setViews);
       toast.error(t("toast.renameFailed"));
     }
   }, [toast, t]);
 
-  const sidebarItems: SidebarItem[] = useMemo(() => [
-    { id: "table", displayName: tableName, active: true },
-    { id: "dashboard", displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false },
-    { id: "workflow", displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false },
-  ], [tableName, sidebarNames, t]);
+  const sidebarItems: SidebarItem[] = useMemo(() => {
+    const tableItems: SidebarItem[] = documentTables.map(tbl => ({
+      id: tbl.id,
+      type: "table" as const,
+      displayName: tbl.id === activeTableId ? tableName : tbl.name,
+      active: tbl.id === activeTableId,
+      order: tbl.order,
+    }));
+    const staticItems: SidebarItem[] = [
+      { id: "dashboard", type: "static" as const, displayName: sidebarNames.dashboard ?? t("sidebar.dashboard"), active: false, order: Infinity },
+      { id: "workflow", type: "static" as const, displayName: sidebarNames.workflow ?? t("sidebar.workflow"), active: false, order: Infinity },
+    ];
+    return [...tableItems, ...staticItems];
+  }, [documentTables, activeTableId, tableName, sidebarNames, t]);
 
-  useTableSync(TABLE_ID, CLIENT_ID, {
+  // ── Table switching ──
+  const switchTable = useCallback(async (tableId: string) => {
+    if (tableId === activeTableIdRef.current) return;
+    undoStackRef.current = [];
+    setCanUndo(false);
+    setActiveTableId(tableId);
+    const tbl = documentTables.find(t => t.id === tableId);
+    if (tbl) setTableName(tbl.name);
+    try {
+      const [f, r, v] = await Promise.all([
+        fetchFields(tableId),
+        fetchRecords(tableId),
+        fetchViews(tableId),
+      ]);
+      setFields(f);
+      setAllRecords(r);
+      setViews(v);
+      const firstView = v[0];
+      if (firstView) {
+        setActiveViewId(firstView.id);
+        const viewFilter = firstView.filter ?? { logic: "and", conditions: [] };
+        setSavedFilter(viewFilter);
+        setFilter(viewFilter);
+        initFieldOrderFromView(firstView, f);
+      }
+    } catch (err) {
+      console.error("Failed to load table:", err);
+      toast.error(t("toast.createTableFailed"));
+    }
+  }, [documentTables, initFieldOrderFromView, toast, t]);
+
+  // ── Create table ──
+  const handleCreateTable = useCallback(async () => {
+    const baseName = locale === "zh" ? "数据表" : "Table";
+    try {
+      const result = await apiCreateTable(baseName, DOCUMENT_ID, locale as "en" | "zh");
+      setDocumentTables(prev => [...prev, { id: result.id, name: result.name, order: result.order }]);
+      await switchTable(result.id);
+      // Set name directly since documentTables state may not have flushed yet
+      setTableName(result.name);
+    } catch {
+      toast.error(t("toast.createTableFailed"));
+    }
+  }, [locale, switchTable, toast, t]);
+
+  // ── Reorder tables ──
+  const handleReorderTables = useCallback(async (updates: Array<{ id: string; order: number }>) => {
+    // Optimistic update
+    setDocumentTables(prev => {
+      const orderMap = new Map(updates.map(u => [u.id, u.order]));
+      return prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
+                  .sort((a, b) => a.order - b.order);
+    });
+    try {
+      await reorderTables(updates, DOCUMENT_ID);
+    } catch {
+      toast.error(t("toast.reorderFailed"));
+      // Refetch on failure
+      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+    }
+  }, [toast, t]);
+
+  // ── Delete table ──
+  const handleDeleteTable = useCallback(async (tableId: string) => {
+    // Don't allow deleting the last table
+    if (documentTables.length <= 1) return;
+    // Optimistic: remove from list
+    setDocumentTables(prev => prev.filter(t => t.id !== tableId));
+    // If deleting the active table, switch to the previous table (or next if first)
+    if (tableId === activeTableIdRef.current) {
+      const idx = documentTables.findIndex(t => t.id === tableId);
+      const remaining = documentTables.filter(t => t.id !== tableId);
+      if (remaining.length > 0) {
+        const target = remaining[Math.max(0, idx - 1)];
+        setActiveTableId(target.id);
+        setTableName(target.name);
+        try {
+          const [f, r, v] = await Promise.all([fetchFields(target.id), fetchRecords(target.id), fetchViews(target.id)]);
+          setFields(f); setAllRecords(r); setViews(v);
+          if (v[0]) { setActiveViewId(v[0].id); setSavedFilter(v[0].filter ?? { logic: "and", conditions: [] }); setFilter(v[0].filter ?? { logic: "and", conditions: [] }); initFieldOrderFromView(v[0], f); }
+        } catch { /* ignore, table switch will handle */ }
+      }
+    }
+    try {
+      await apiDeleteTable(tableId);
+    } catch {
+      toast.error(t("toast.deleteFailed"));
+      fetchDocumentTables(DOCUMENT_ID).then(setDocumentTables);
+    }
+  }, [documentTables, initFieldOrderFromView, toast, t]);
+
+  // ── Persist active table to localStorage ──
+  useEffect(() => {
+    if (activeTableId) localStorage.setItem("lastActiveTableId", activeTableId);
+  }, [activeTableId]);
+
+  // ── Document-level SSE for sidebar sync ──
+  useDocumentSync(DOCUMENT_ID, CLIENT_ID, {
+    onTableCreate: useCallback((table: { id: string; name: string; order: number }) => {
+      setDocumentTables(prev =>
+        prev.some(t => t.id === table.id) ? prev : [...prev, table].sort((a, b) => a.order - b.order)
+      );
+    }, []),
+    onTableDelete: useCallback((tableId: string) => {
+      setDocumentTables(prev => prev.filter(t => t.id !== tableId));
+    }, []),
+    onTableReorder: useCallback((updates: Array<{ id: string; order: number }>) => {
+      setDocumentTables(prev => {
+        const orderMap = new Map(updates.map(u => [u.id, u.order]));
+        return prev.map(t => orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t)
+                    .sort((a, b) => a.order - b.order);
+      });
+    }, []),
+  });
+
+  useTableSync(activeTableId, CLIENT_ID, {
     onRecordCreate: handleRemoteRecordCreate,
     onRecordUpdate: handleRemoteRecordUpdate,
     onRecordDelete: handleRemoteRecordDelete,
@@ -888,11 +1039,23 @@ export default function App() {
         documentName={documentName}
         deleteProtection={deleteProtection}
         onDeleteProtectionChange={setDeleteProtection}
-        onRenameTable={(name) => handleRenameSidebarItem("table", name)}
+        onRenameTable={(name) => handleRenameSidebarItem(activeTableId, name)}
         onRenameDocument={handleRenameDocument}
       />
       <div className="app-body">
-        <Sidebar items={sidebarItems} onRenameItem={handleRenameSidebarItem} />
+        <Sidebar
+          items={sidebarItems}
+          onRenameItem={handleRenameSidebarItem}
+          activeItemId={activeTableId}
+          onSelectItem={(id: string) => {
+            const isTable = documentTables.some(t => t.id === id);
+            if (isTable) switchTable(id);
+          }}
+          onCreateTable={handleCreateTable}
+          onReorderTables={handleReorderTables}
+          onDeleteTable={handleDeleteTable}
+          tableCount={documentTables.length}
+        />
         <div className="app-main">
           <ViewTabs
             views={views}
@@ -938,7 +1101,7 @@ export default function App() {
             {filterPanelOpen && (
               <FilterPanel
                 ref={filterPanelRef}
-                tableId={TABLE_ID}
+                tableId={activeTableId}
                 fields={visibleOrderedFields}
                 filter={filter}
                 onFilterChange={handleFilterChange}
@@ -959,7 +1122,7 @@ export default function App() {
             )}
             {addFieldAnchor && (
               <AddFieldPopover
-                currentTableId={TABLE_ID}
+                currentTableId={activeTableIdRef.current}
                 currentFields={fields}
                 anchorRect={addFieldAnchor}
                 onCancel={() => setAddFieldAnchor(null)}

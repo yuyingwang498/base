@@ -150,6 +150,50 @@ export async function renameDocument(
   return res.json();
 }
 
+export async function fetchDocumentTables(
+  docId: string
+): Promise<Array<{ id: string; name: string; order: number }>> {
+  const res = await fetch(`${BASE}/documents/${docId}/tables`);
+  return res.json();
+}
+
+export async function createTable(
+  name: string,
+  documentId: string,
+  language: "en" | "zh"
+): Promise<{ id: string; name: string; order: number }> {
+  const res = await mutationFetch(`${BASE}/tables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, documentId, language }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to create table");
+  }
+  return res.json();
+}
+
+export async function reorderTables(
+  updates: Array<{ id: string; order: number }>,
+  documentId: string
+): Promise<void> {
+  const res = await mutationFetch(`${BASE}/tables/reorder`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, documentId }),
+  });
+  if (!res.ok) throw new Error("Failed to reorder tables");
+}
+
+export async function deleteTable(tableId: string): Promise<void> {
+  const res = await mutationFetch(`${BASE}/tables/${tableId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to delete table");
+  }
+}
+
 export async function renameTable(
   tableId: string,
   name: string

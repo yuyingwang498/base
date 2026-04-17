@@ -281,7 +281,35 @@ export const zh: TranslationKeys = {
 
   // Context menu
   "contextMenu.rename": "重命名",
+  "contextMenu.delete": "删除",
+
+  // Delete table
+  "app.deleteTable": "删除数据表",
+  "app.deleteTableMsg": "确定要删除数据表「{{name}}」吗？删除后不可恢复。",
 
   // Toast (rename)
   "toast.renameFailed": "重命名失败，修改已回退",
+
+  // Create menu
+  "createMenu.quickCreate": "快速创建",
+  "createMenu.aiCreate": "通过AI创建",
+  "createMenu.template": "模板中心",
+  "createMenu.new": "新建",
+  "createMenu.table": "数据表",
+  "createMenu.form": "收集表",
+  "createMenu.dashboard": "仪表盘",
+  "createMenu.workflow": "工作流",
+  "createMenu.doc": "文档",
+  "createMenu.manage": "管理",
+  "createMenu.folder": "文件夹",
+  "createMenu.import": "导入/同步数据",
+  "createMenu.appSection": "应用",
+  "createMenu.app": "应用",
+
+  // Toast (table creation)
+  "toast.createTableFailed": "创建数据表失败",
+  "toast.reorderFailed": "排序失败",
+
+  // Default field name
+  "defaultField.text": "文本",
 };

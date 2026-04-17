@@ -29,21 +29,56 @@ router.get("/", async (_req: Request, res: Response) => {
 
 // POST /api/tables — create table
 router.post("/", async (req: Request, res: Response) => {
-  const { name } = req.body;
+  const { name, documentId, language } = req.body;
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "表名不能为空" });
     return;
   }
-  const table = await store.createTable({ name });
-  res.status(201).json({ id: table.id, name: table.name });
+  const docId = documentId || "doc_default";
+  const finalName = await store.generateTableName(docId, name);
+  const table = await store.createTable({ name: finalName, documentId: docId, language });
+  eventBus.emitDocumentChange({
+    type: "table:create",
+    documentId: docId,
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { table: { id: table.id, name: table.name, order: table.order } },
+  });
+  res.status(201).json({ id: table.id, name: table.name, order: table.order });
+});
+
+// PUT /api/tables/reorder — batch reorder tables (must be before /:tableId)
+router.put("/reorder", async (req: Request, res: Response) => {
+  const { updates, documentId } = req.body;
+  if (!Array.isArray(updates)) {
+    res.status(400).json({ error: "updates must be an array" });
+    return;
+  }
+  await store.batchReorderTables(updates);
+  eventBus.emitDocumentChange({
+    type: "table:reorder",
+    documentId: documentId || "doc_default",
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { updates },
+  });
+  res.json({ ok: true });
 });
 
 // DELETE /api/tables/:tableId
 router.delete("/:tableId", async (req: Request, res: Response) => {
-  if (!(await store.deleteTable(req.params.tableId))) {
+  const tableId = req.params.tableId;
+  if (!(await store.deleteTable(tableId))) {
     res.status(404).json({ error: "Table not found" });
     return;
   }
+  eventBus.emitDocumentChange({
+    type: "table:delete",
+    documentId: "doc_default",
+    clientId: getClientId(req),
+    timestamp: Date.now(),
+    payload: { tableId },
+  });
   res.json({ ok: true });
 });
 

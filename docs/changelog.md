@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-04-17
+
+### feat: 多表管理（新建、切换、拖动排序、删除）
+- **改动点**: 同一 Document 下支持新建多个数据表，Sidebar 动态显示、切换、排序、删除
+- **详细说明**:
+  1. 后端增强：`dbStore.ts` 新增 `listTablesForDocument()`、`batchReorderTables()`、`generateTableName()`、`deleteTableCascade()` 函数。`createTable()` 创建 1 个默认 Text 字段 + 5 条空记录 + Grid 视图
+  2. 文档级 SSE：`eventBus.ts` 新增 `DocumentChangeEvent` 通道，`sseRoutes.ts` 新增 `GET /api/sync/documents/:docId/events` 端点，支持 `table:create`、`table:delete`、`table:reorder`、`table:rename` 事件
+  3. 前端 `App.tsx` 核心重构：`TABLE_ID` 常量替换为 `activeTableId` 状态 + `activeTableIdRef` ref，~30 处引用更新，新增 `switchTable()`、`handleCreateTable()`、`handleDeleteTable()` 回调
+  4. 新增 `useDocumentSync.ts` Hook 监听文档级 SSE，同步 sidebar 表列表变化
+  5. Sidebar 重构：动态表列表、原生 mouse 事件拖动排序（蓝线指示器）、"+新建" 下拉菜单（Figma 设计、分组显示、240px 宽度）、表项右键/more icon 删除（180px 菜单、ConfirmDialog 确认）
+  6. `DropdownMenu.tsx` 扩展：`section` 分组、`suffix` 右箭头、`noop` 静默项、`width` 固定宽度、`position: "above"` 向上弹出
+
+### feat: Sidebar 宽度可调
+- **改动点**: 支持拖动 Sidebar 右侧边缘调整宽度
+- **详细说明**: 拖拽 6px 热区，范围 120px–400px，宽度通过 localStorage `sidebar_width` 持久化
+
+### fix: 新表默认列宽 280px
+- **改动点**: 新建数据表的主字段（Text）默认列宽从 120px 调整为 280px
+- **详细说明**: `TableView/index.tsx` 新增 `getDefaultColWidth(field)` 辅助函数，isPrimary 字段返回 280px
+
+### fix: 删除表切换到上一个表
+- **改动点**: 删除当前活跃表时自动切换到前一个表，而非第一个
+- **详细说明**: `handleDeleteTable` 使用 `remaining[Math.max(0, idx - 1)]` 选择目标表
+
+### fix: 切换表时表名闪烁
+- **改动点**: 修复 sidebar 点击切换表瞬间表名短暂显示其他表名
+- **详细说明**: `switchTable` 中 `setTableName` 移到 async fetch 之前同步设置
+
+### fix: 默认表名数字前加空格
+- **改动点**: 自动生成的重复表名数字序号前增加空格（「数据表 2」而非「数据表2」）
+- **详细说明**: `dbStore.ts` 中 `generateTableName()` 模板改为 `${baseName} ${i}`
+
+### fix: 新建菜单非功能项不关闭菜单
+- **改动点**: 点击非功能选项（如"通过AI创建"等）不再触发菜单关闭
+- **详细说明**: `MenuItem` 新增 `noop` 属性，`DropdownMenu` 中 noop 项点击跳过 `onSelect`/`onClose`
+
+---
+
 ## 2026-04-15
 
 ### feat: 英文/中文国际化语言切换 (i18n)

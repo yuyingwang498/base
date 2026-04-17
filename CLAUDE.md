@@ -38,18 +38,19 @@ backend/
     routes/
       tableRoutes.ts  - CRUD APIs for tables/fields/records/views
       aiRoutes.ts     - AI filter generation endpoint (SSE streaming)
-      sseRoutes.ts    - Real-time sync SSE endpoint (/api/sync/:tableId/events)
+      sseRoutes.ts    - Real-time sync SSE endpoints (table-level + document-level)
     services/
       aiService.ts    - Volcano ARK API integration, tool definitions, prompt
       dataStore.ts    - In-memory data store, AI tool functions
-      eventBus.ts     - Event bus for real-time sync (EventEmitter, per tableId)
+      eventBus.ts     - Event bus for real-time sync (table-level + document-level)
       filterEngine.ts - Client-side filter evaluation
 frontend/
   src/
-    App.tsx           - Main app, state management, field order lifting
+    App.tsx           - Main app, multi-table state management, field order lifting
     api.ts            - API client functions (with CLIENT_ID + mutationFetch)
     hooks/
-      useTableSync.ts - SSE subscription hook for real-time data sync
+      useTableSync.ts   - Table-level SSE subscription hook for real-time data sync
+      useDocumentSync.ts - Document-level SSE hook for sidebar table list sync
     i18n/
       en.ts           - English translations (130+ keys)
       zh.ts           - Chinese translations (130+ keys)
@@ -57,6 +58,8 @@ frontend/
     components/
       FilterPanel/    - AI filter input + manual filter conditions UI
       TableView/      - Main table grid with drag-reorder, resize, edit
+      Sidebar.tsx     - Sidebar with dynamic table list, drag-reorder, resize, create/delete
+      DropdownMenu.tsx - Generic dropdown menu with section grouping, noop items
       Toolbar.tsx     - Toolbar with filter button
     services/
       filterEngine.ts - Client-side filter matching

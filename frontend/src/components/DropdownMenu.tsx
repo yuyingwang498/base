@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import "./DropdownMenu.css";
 
@@ -6,6 +6,10 @@ export interface MenuItem {
   key: string;
   label: string;
   icon?: ReactNode;
+  suffix?: ReactNode;
+  disabled?: boolean;
+  noop?: boolean;
+  section?: string;
 }
 
 interface Props {
@@ -13,16 +17,28 @@ interface Props {
   onSelect: (key: string) => void;
   anchorEl: HTMLElement;
   onClose: () => void;
+  position?: "below" | "above";
+  width?: number;
 }
 
-export default function DropdownMenu({ items, onSelect, anchorEl, onClose }: Props) {
+export default function DropdownMenu({ items, onSelect, anchorEl, onClose, position = "below", width }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const rect = anchorEl.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, left: rect.left });
-  }, [anchorEl]);
+    if (position === "above") {
+      if (menuRef.current) {
+        const menuRect = menuRef.current.getBoundingClientRect();
+        setPos({ top: rect.top - menuRect.height - 4, left: rect.left });
+      } else {
+        // Fallback: estimate
+        setPos({ top: rect.top - 300, left: rect.left });
+      }
+    } else {
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    }
+  }, [anchorEl, position]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -35,25 +51,49 @@ export default function DropdownMenu({ items, onSelect, anchorEl, onClose }: Pro
     return () => document.removeEventListener("mousedown", handler);
   }, [anchorEl, onClose]);
 
+  // Group items by section
+  const groups: Array<{ title?: string; items: MenuItem[] }> = [];
+  let currentGroup: { title?: string; items: MenuItem[] } | null = null;
+  for (const item of items) {
+    if (item.section) {
+      currentGroup = { title: item.section, items: [item] };
+      groups.push(currentGroup);
+    } else if (currentGroup) {
+      currentGroup.items.push(item);
+    } else {
+      currentGroup = { title: undefined, items: [item] };
+      groups.push(currentGroup);
+    }
+  }
+
   return createPortal(
     <div
       ref={menuRef}
       className="dropdown-menu"
-      style={{ top: pos.top, left: pos.left }}
+      style={{ top: pos.top, left: pos.left, width: width ?? undefined }}
     >
-      {items.map((item) => (
-        <button
-          key={item.key}
-          className="dropdown-menu-item"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(item.key);
-            onClose();
-          }}
-        >
-          {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
-          {item.label}
-        </button>
+      {groups.map((group, gi) => (
+        <div key={group.title || gi} className="dropdown-menu-group">
+          {group.title && <div className="dropdown-menu-section">{group.title}</div>}
+          <div className="dropdown-menu-items">
+            {group.items.map((item) => (
+              <button
+                key={item.key}
+                className={`dropdown-menu-item${item.disabled ? " disabled" : ""}${item.suffix ? " has-suffix" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (item.disabled || item.noop) return;
+                  onSelect(item.key);
+                  onClose();
+                }}
+              >
+                {item.icon && <span className="dropdown-menu-item-icon">{item.icon}</span>}
+                <span className="dropdown-menu-item-label">{item.label}</span>
+                {item.suffix && <span className="dropdown-menu-item-suffix">{item.suffix}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
       ))}
     </div>,
     document.body,

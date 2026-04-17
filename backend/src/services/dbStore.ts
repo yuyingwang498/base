@@ -153,27 +153,69 @@ export async function getTable(id: string): Promise<Table | undefined> {
   return toTable(row, records.map(toRecord));
 }
 
-export async function createTable(dto: CreateTableDTO): Promise<Table> {
+export async function createTable(dto: CreateTableDTO): Promise<Table & { order: number }> {
+  const docId = dto.documentId || DEFAULT_DOCUMENT_ID;
+  const fieldName = dto.language === "en" ? "Text" : "文本";
+
+  // Compute next order
+  const maxOrder = await prisma.table.aggregate({
+    where: { documentId: docId },
+    _max: { order: true },
+  });
+  const nextOrder = (maxOrder._max.order ?? -1) + 1;
+
+  // Default text field
+  const defaultField: Field = {
+    id: `fld_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    tableId: "",
+    name: fieldName,
+    type: "Text",
+    isPrimary: true,
+    config: {},
+  };
+
   const defaultView: View = {
     id: `viw_${Date.now().toString(36)}`,
-    tableId: "", // will be set after creation
+    tableId: "",
     name: "Grid",
     type: "grid",
     filter: { logic: "and", conditions: [] },
+    fieldOrder: [defaultField.id],
+    hiddenFields: [],
   };
+
   const row = await prisma.table.create({
     data: {
       name: sanitizeName(dto.name),
-      documentId: DEFAULT_DOCUMENT_ID,
-      fields: [],
-      views: [defaultView],
+      documentId: docId,
+      order: nextOrder,
+      fields: [defaultField] as any,
+      views: [defaultView] as any,
       autoNumberCounters: {},
     },
   });
-  // Update view tableId
+
+  // Update tableId references
+  defaultField.tableId = row.id;
   defaultView.tableId = row.id;
-  await prisma.table.update({ where: { id: row.id }, data: { views: [defaultView] as any } });
-  return toTable({ ...row, views: [defaultView] as any }, []);
+  await prisma.table.update({
+    where: { id: row.id },
+    data: { fields: [defaultField] as any, views: [defaultView] as any },
+  });
+
+  // Create 5 empty records
+  const records: TableRecord[] = [];
+  for (let i = 0; i < 5; i++) {
+    const rec = await prisma.record.create({
+      data: {
+        tableId: row.id,
+        cells: { [defaultField.id]: null } as any,
+      },
+    });
+    records.push(toRecord(rec));
+  }
+
+  return { ...toTable({ ...row, fields: [defaultField] as any, views: [defaultView] as any }, records), order: nextOrder };
 }
 
 export async function deleteTable(id: string): Promise<boolean> {
@@ -200,6 +242,36 @@ export async function updateTable(id: string, dto: { name?: string }): Promise<T
   const updated = await prisma.table.update({ where: { id }, data });
   const records = await prisma.record.findMany({ where: { tableId: id }, orderBy: { createdAt: "asc" } });
   return toTable(updated, records.map(toRecord));
+}
+
+// ─── Table helpers (multi-table) ───
+
+export async function listTablesForDocument(documentId: string): Promise<Array<{ id: string; name: string; order: number }>> {
+  const rows = await prisma.table.findMany({
+    where: { documentId },
+    orderBy: { order: "asc" },
+    select: { id: true, name: true, order: true },
+  });
+  return rows;
+}
+
+export async function batchReorderTables(updates: Array<{ id: string; order: number }>): Promise<boolean> {
+  await prisma.$transaction(
+    updates.map(u => prisma.table.update({ where: { id: u.id }, data: { order: u.order } }))
+  );
+  return true;
+}
+
+export async function generateTableName(documentId: string, baseName: string): Promise<string> {
+  const existing = await prisma.table.findMany({
+    where: { documentId },
+    select: { name: true },
+  });
+  const names = new Set(existing.map(t => t.name));
+  if (!names.has(baseName)) return baseName;
+  let i = 1;
+  while (names.has(`${baseName} ${i}`)) i++;
+  return `${baseName} ${i}`;
 }
 
 // ─── Field ───

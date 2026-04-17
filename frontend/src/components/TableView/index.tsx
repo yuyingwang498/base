@@ -566,6 +566,7 @@ function EditableCell({
 }
 
 // ─────────── Default column widths ───────────
+const PRIMARY_FIELD_DEFAULT_WIDTH = 280;
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
   fld_name: 220,
   fld_created: 120,
@@ -578,6 +579,12 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   fld_pd_estimate: 90,
 };
 const MIN_COL_WIDTH = 60;
+
+function getDefaultColWidth(field: { id: string; isPrimary?: boolean }): number {
+  if (DEFAULT_COL_WIDTHS[field.id]) return DEFAULT_COL_WIDTHS[field.id];
+  if (field.isPrimary) return PRIMARY_FIELD_DEFAULT_WIDTH;
+  return 120;
+}
 
 // ─────────── Main TableView ───────────
 export interface TableViewHandle {
@@ -613,6 +620,18 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragOverFieldId, setDragOverFieldId] = useState<string | null>(null);
+
+  // Track container width for table width calculation
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth);
+    const ro = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Refs to always reflect latest state (eliminates stale-closure issues in native event handlers)
   const selectedRowIdsRef = useRef<Set<string>>(selectedRowIds);
@@ -927,7 +946,8 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startWidth = colWidths[fieldId] ?? DEFAULT_COL_WIDTHS[fieldId] ?? 120;
+    const field = visibleFields.find(f => f.id === fieldId);
+    const startWidth = colWidths[fieldId] ?? getDefaultColWidth(field ?? { id: fieldId });
     resizeRef.current = { fieldId, startX, startWidth };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -1119,16 +1139,24 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
     return "col-drag-over";
   };
 
+  // Compute exact table width so table-layout:fixed allocates columns precisely.
+  // The "add field" col has no explicit width — it absorbs any extra space when container is wider.
+  const INDEX_COL = 44;
+  const ADD_FIELD_COL = 136;
+  const fieldWidthSum = visibleFields.reduce((sum, f) => sum + (colWidths[f.id] ?? getDefaultColWidth(f)), 0);
+  const colSum = INDEX_COL + fieldWidthSum + ADD_FIELD_COL;
+  const tableWidth = Math.max(colSum, containerWidth);
+
   return (
     <div className="table-wrap" ref={tableRef}>
-      <div className="table-container">
-        <table className="data-table">
+      <div className="table-container" ref={containerRef}>
+        <table className="data-table" style={{ width: tableWidth }}>
           <colgroup>
-            <col style={{ width: 44 }} />
+            <col style={{ width: INDEX_COL }} />
             {visibleFields.map((f) => (
-              <col key={f.id} style={{ width: colWidths[f.id] ?? DEFAULT_COL_WIDTHS[f.id] ?? 120 }} />
+              <col key={f.id} style={{ width: colWidths[f.id] ?? getDefaultColWidth(f) }} />
             ))}
-            <col style={{ width: 136 }} />
+            <col />
           </colgroup>
           <thead>
             <tr>
