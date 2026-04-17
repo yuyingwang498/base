@@ -208,7 +208,15 @@ function TextEditor({
   const [draft, setDraft] = useState(value === null ? "" : String(value));
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  // Focus without selecting all — preserve click position for cursor placement
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    // Move cursor to end instead of selecting all, so user can click to reposition
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  }, []);
 
   const commit = () => {
     const v = draft.trim();
@@ -228,7 +236,10 @@ function TextEditor({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        // Ignore Enter during IME composition (e.g. Chinese input confirming pinyin)
+        if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+          e.preventDefault(); commit();
+        }
         if (e.key === "Escape") { e.preventDefault(); onCancel(); }
       }}
     />
