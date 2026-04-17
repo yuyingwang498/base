@@ -10,7 +10,7 @@
   position: absolute;
   background: var(--color-bg-float);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
+  border-radius: 8px;
   box-shadow: var(--shadow-panel);
   max-height: calc(100vh - 120px);
   overflow: visible;
@@ -25,23 +25,22 @@
 }
 
 .field-popover-body {
-  padding: 20px 20px 16px;
+  padding: 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .field-popover-footer {
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--color-border-light);
+  padding: 10px 12px 12px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 
 .field-popover-error {
-  padding: 8px 20px;
+  padding: 8px 12px;
   border-top: 1px solid #fadcde;
   background: #fff5f5;
   color: #c23b3b;
@@ -184,12 +183,11 @@
 }
 
 .type-picker-menu::-webkit-scrollbar {
-  width: 6px;
+  display: none;
 }
 
-.type-picker-menu::-webkit-scrollbar-thumb {
-  background: rgba(31, 35, 41, 0.2);
-  border-radius: 3px;
+.type-picker-menu {
+  scrollbar-width: none;
 }
 
 .type-picker-section {

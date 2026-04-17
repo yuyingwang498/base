@@ -182,7 +182,7 @@ export const zh: TranslationKeys = {
   "addField.refresh": "换一批",
   "addField.aiLoading": "思考中...",
   "addField.fieldType": "字段类型",
-  "addField.exploreShortcuts": "探索字段快捷方式",
+  "addField.exploreShortcuts": "探索字段捷径",
   "addField.cancel": "取消",
   "addField.confirm": "确认",
   "addField.creating": "...",

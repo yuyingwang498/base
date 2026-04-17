@@ -6,6 +6,7 @@ import {
 } from "../../types";
 import { createField, fetchTables, suggestFields, TableBrief, ApiError, FieldSuggestion } from "../../api";
 import { LookupConfigPanel } from "./LookupConfigPanel";
+import { FieldIcon } from "./FieldIcons";
 import { useTranslation } from "../../i18n";
 import "./FieldConfig.css";
 
@@ -77,10 +78,6 @@ const FIELD_TYPE_GROUPS: FieldTypeGroup[] = [
 ];
 
 const ALL_FIELD_ITEMS = FIELD_TYPE_GROUPS.flatMap(g => g.items);
-
-function findTypeIcon(ft: FieldType | string): string {
-  return ALL_FIELD_ITEMS.find(i => i.type === ft)?.icon ?? "∎";
-}
 
 function findTypeLabelKey(ft: FieldType): string {
   return ALL_FIELD_ITEMS.find(i => i.type === ft)?.labelKey ?? ft;
@@ -167,12 +164,13 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [fieldType, setFieldType] = useState<FieldType>("Text");
-  const [typePickerRect, setTypePickerRect] = useState<DOMRect | null>(null);
+  const [typePickerAnchor, setTypePickerAnchor] = useState<{ card: DOMRect; popover: DOMRect } | null>(null);
   const [lookupConfig, setLookupConfig] = useState<LookupConfig>(EMPTY_LOOKUP);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<{ message: string; path?: string } | null>(null);
   const [allTables, setAllTables] = useState<TableBrief[]>([]);
   const fieldTypeCardRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { suggestions, loading: sugLoading, refresh: sugRefresh } = fieldSuggestions;
@@ -187,17 +185,18 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 
   const showTypePicker = () => {
     cancelHideTimer();
-    if (typePickerRect) return;
-    const r = fieldTypeCardRef.current?.getBoundingClientRect();
-    if (r) setTypePickerRect(r);
+    if (typePickerAnchor) return;
+    const card = fieldTypeCardRef.current?.getBoundingClientRect();
+    const popover = popoverRef.current?.getBoundingClientRect();
+    if (card && popover) setTypePickerAnchor({ card, popover });
   };
 
   const scheduleHide = () => {
     cancelHideTimer();
-    hideTimerRef.current = setTimeout(() => setTypePickerRect(null), 150);
+    hideTimerRef.current = setTimeout(() => setTypePickerAnchor(null), 150);
   };
 
-  const width = fieldType === "Lookup" ? 484 : 340;
+  const width = fieldType === "Lookup" ? 484 : 320;
   const style = useMemo(() => {
     if (!anchorRect) return { left: 100, top: 100, width } as React.CSSProperties;
     const rightEdge = anchorRect.right + 12;
@@ -247,6 +246,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
     <div className="field-popover-backdrop" onMouseDown={onCancel}>
       <div
         className="field-popover"
+        ref={popoverRef}
         style={style}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -283,7 +283,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
                     className="suggest-chip"
                     onClick={() => handleSuggestionClick(s)}
                   >
-                    <span className="suggest-chip-icon">{findTypeIcon(s.type)}</span>
+                    <span className="suggest-chip-icon"><FieldIcon type={s.type} size={14} /></span>
                     {s.name}
                     {s.type.startsWith("ai_") && <span className="suggest-ai-badge">AI</span>}
                   </button>
@@ -321,7 +321,7 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
             >
               <div className="field-type-row">
                 <span className="label">
-                  <span style={{ width: 18, fontFamily: "monospace", color: "#51565d" }}>{findTypeIcon(fieldType)}</span>
+                  <span style={{ width: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#51565d" }}><FieldIcon type={fieldType} size={16} /></span>
                   {t(findTypeLabelKey(fieldType))}
                 </span>
                 <span className="chevron">›</span>
@@ -357,11 +357,12 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
         </div>
       </div>
 
-      {typePickerRect && (
+      {typePickerAnchor && (
         <TypePicker
-          anchorRect={typePickerRect}
+          cardRect={typePickerAnchor.card}
+          popoverRect={typePickerAnchor.popover}
           current={fieldType}
-          onSelect={(ft) => { cancelHideTimer(); setFieldType(ft); setTypePickerRect(null); }}
+          onSelect={(ft) => { cancelHideTimer(); setFieldType(ft); setTypePickerAnchor(null); }}
           onMouseEnter={cancelHideTimer}
           onMouseLeave={scheduleHide}
         />
@@ -373,34 +374,42 @@ export function AddFieldPopover({ currentTableId, currentFields, anchorRect, onC
 // ─── Type picker menu ───
 
 interface TypePickerProps {
-  anchorRect: DOMRect;
+  cardRect: DOMRect;
+  popoverRect: DOMRect;
   current: FieldType;
   onSelect: (t: FieldType) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
-function TypePicker({ anchorRect, current, onSelect, onMouseEnter, onMouseLeave }: TypePickerProps) {
+function TypePicker({ cardRect, popoverRect, current, onSelect, onMouseEnter, onMouseLeave }: TypePickerProps) {
   const { t } = useTranslation();
   const MENU_W = 220;
-  const GAP = 4;
-  const spaceRight = window.innerWidth - anchorRect.right - GAP - 16;
+
+  // 1. Y: align with the field-type-card (the first row of the "一级菜单")
+  const top = cardRect.top;
+
+  // 2. Height: fill to bottom, leaving 10px margin
+  const maxHeight = window.innerHeight - top - 10;
+
+  // 3. X: flush against the popover panel (0px gap)
+  const spaceRight = window.innerWidth - popoverRect.right;
   const openRight = spaceRight >= MENU_W;
   const menuLeft = openRight
-    ? anchorRect.right + GAP
-    : anchorRect.left - GAP - MENU_W;
-  const top = Math.max(16, Math.min(window.innerHeight - 560, anchorRect.top));
+    ? popoverRect.right
+    : popoverRect.left - MENU_W;
 
+  // Bridge covers the gap between card edge and popover edge
   const bridgeStyle: React.CSSProperties = openRight
-    ? { position: "fixed", left: anchorRect.right, top, width: GAP, height: anchorRect.height }
-    : { position: "fixed", left: anchorRect.left - GAP, top, width: GAP, height: anchorRect.height };
+    ? { position: "fixed", left: cardRect.right, top, width: Math.max(0, popoverRect.right - cardRect.right), height: cardRect.height }
+    : { position: "fixed", left: popoverRect.left - (cardRect.left - popoverRect.left), top, width: Math.max(0, cardRect.left - popoverRect.left), height: cardRect.height };
 
   return (
     <>
       <div style={bridgeStyle} onMouseEnter={onMouseEnter} />
       <div
         className="type-picker-menu floating"
-        style={{ position: "fixed", left: menuLeft, top, width: MENU_W }}
+        style={{ position: "fixed", left: menuLeft, top, width: MENU_W, maxHeight }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onMouseDown={(e) => e.stopPropagation()}
@@ -415,7 +424,7 @@ function TypePicker({ anchorRect, current, onSelect, onMouseEnter, onMouseLeave 
                 onClick={() => onSelect(item.type)}
               >
                 <span className="left">
-                  <span className="icon">{item.icon}</span>
+                  <span className="icon"><FieldIcon type={item.type} size={16} /></span>
                   {t(item.labelKey)}
                 </span>
                 {current === item.type && <span style={{ color: "#1456f0" }}>✓</span>}

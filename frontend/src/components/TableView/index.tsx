@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Field, TableRecord, UserOption } from "../../types";
 import { useTranslation } from "../../i18n/index";
+import { FieldIcon as FieldIconSvg } from "../FieldConfig/FieldIcons";
 import "./TableView.css";
 
 type CellValue = string | number | boolean | string[] | null;
@@ -1318,55 +1319,5 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
 export default TableView;
 
 function FieldIcon({ type }: { type: string }) {
-  switch (type) {
-    case "DateTime":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "SingleSelect":
-    case "MultiSelect":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-          <path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "User":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
-          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "Number":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <path d="M7 20l3-16M14 20l3-16M4 8h18M3 16h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "Checkbox":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
-          <path d="m7 12 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "Lookup":
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="2" />
-          <path d="M21 18l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="17" cy="14" r="3" stroke="currentColor" strokeWidth="2" />
-        </svg>
-      );
-    default:
-      return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="field-icon">
-          <path d="M4 6h16M4 10h16M4 14h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-  }
+  return <FieldIconSvg type={type} size={12} className="field-icon" />;
 }
