@@ -162,7 +162,14 @@ export function useFieldSuggestions(tableId: string) {
     }
   }, [pageIndex, totalPages, fetchSuggestions]);
 
-  return { suggestions: currentPage, loading, refresh };
+  const refetch = useCallback(() => {
+    setCache([]);
+    setPageIndex(0);
+    shownNamesRef.current = new Set();
+    fetchSuggestions({ excludeNames: [], forceRefresh: true });
+  }, [fetchSuggestions]);
+
+  return { suggestions: currentPage, loading, refresh, refetch };
 }
 
 export interface FieldSuggestionsState {
