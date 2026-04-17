@@ -132,6 +132,7 @@
   text-align: center !important;
   padding: 0 !important;
   cursor: default;
+  border-right: none !important;
 }
 
 .col-index:hover {
