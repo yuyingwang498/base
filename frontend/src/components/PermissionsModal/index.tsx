@@ -21,11 +21,11 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
 
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
 
-  const [rolePermissions, setRolePermissions] = useState<Record<string, { enabled: boolean; create: boolean; delete: boolean; share: boolean }>>({
-    owner: { enabled: true, create: true, delete: true, share: true },
-    admin: { enabled: true, create: true, delete: true, share: true },
-    editor: { enabled: false, create: false, delete: false, share: false },
-    viewer: { enabled: false, create: false, delete: false, share: false },
+  const [rolePermissions, setRolePermissions] = useState<Record<string, { enabled: boolean; create: boolean; createOnlyOwn: boolean; delete: boolean; share: boolean; shareOnlyOwn: boolean }>>({
+    owner: { enabled: true, create: true, createOnlyOwn: false, delete: true, share: true, shareOnlyOwn: false },
+    admin: { enabled: true, create: true, createOnlyOwn: false, delete: true, share: true, shareOnlyOwn: false },
+    editor: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
+    viewer: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
   });
 
   const [renamingRoleId, setRenamingRoleId] = useState<string | null>(null);
@@ -55,20 +55,55 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
   const selectedRole = allRoles.find(r => r.id === selectedRoleId);
   const isReadOnlyRole = selectedRoleId === "owner" || selectedRoleId === "admin";
   const isCustomRole = customRoles.some(r => r.id === selectedRoleId);
-  const currentPermissions = rolePermissions[selectedRoleId] || { enabled: false, create: false, delete: false, share: false };
+  const currentPermissions = rolePermissions[selectedRoleId] || { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true };
 
   const handleRoleChange = (roleId: string) => {
     setSelectedRoleId(roleId);
   };
 
-  const updatePermission = (key: 'enabled' | 'create' | 'delete' | 'share', value: boolean) => {
-    setRolePermissions(prev => ({
-      ...prev,
-      [selectedRoleId]: {
-        ...prev[selectedRoleId],
-        [key]: value,
-      },
-    }));
+  const updatePermission = (key: 'enabled' | 'create' | 'createOnlyOwn' | 'delete' | 'share' | 'shareOnlyOwn', value: boolean) => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true };
+      
+      let newPermissions = { ...current, [key]: value };
+      
+      // 开启仪表盘权限时，默认勾选下面所有权限
+      if (key === 'enabled' && value === true) {
+        newPermissions = {
+          ...newPermissions,
+          create: true,
+          createOnlyOwn: true,
+          delete: true,
+          share: true,
+          shareOnlyOwn: true,
+        };
+      }
+      
+      // 勾选创建仪表盘时，默认勾选仅编辑自己创建的
+      if (key === 'create' && value === true) {
+        newPermissions.createOnlyOwn = true;
+      }
+      
+      // 勾选分享仪表盘时，默认勾选仅分享自己创建的
+      if (key === 'share' && value === true) {
+        newPermissions.shareOnlyOwn = true;
+      }
+      
+      // 取消创建时，也取消仅编辑自己创建的
+      if (key === 'create' && value === false) {
+        newPermissions.createOnlyOwn = true;
+      }
+      
+      // 取消分享时，也取消仅分享自己创建的
+      if (key === 'share' && value === false) {
+        newPermissions.shareOnlyOwn = true;
+      }
+      
+      return {
+        ...prev,
+        [selectedRoleId]: newPermissions,
+      };
+    });
   };
 
   const handleSave = () => {
@@ -90,7 +125,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     setCustomRoles(prev => [...prev, newRole]);
     setRolePermissions(prev => ({
       ...prev,
-      [newId]: { enabled: false, create: false, delete: false, share: false },
+      [newId]: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
     }));
     setSelectedRoleId(newId);
     setRenamingRoleId(newId);
@@ -369,6 +404,17 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                         />
                         <span>创建仪表盘</span>
                       </div>
+                      {currentPermissions.create && (
+                        <div className="permission-item sub-permission">
+                          <input 
+                            type="checkbox" 
+                            checked={currentPermissions.createOnlyOwn}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => updatePermission('createOnlyOwn', e.target.checked)}
+                          />
+                          <span>仅编辑自己创建的仪表盘</span>
+                        </div>
+                      )}
                       <div className="permission-item">
                         <input 
                           type="checkbox" 
@@ -376,7 +422,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                           disabled={isReadOnlyRole}
                           onChange={(e) => updatePermission('delete', e.target.checked)}
                         />
-                        <span>删除自己创建的仪表盘</span>
+                        <span>{isReadOnlyRole ? '删除仪表盘' : '删除自己创建的仪表盘'}</span>
                       </div>
                       <div className="permission-item">
                         <input 
@@ -387,6 +433,17 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                         />
                         <span>分享仪表盘</span>
                       </div>
+                      {currentPermissions.share && (
+                        <div className="permission-item sub-permission">
+                          <input 
+                            type="checkbox" 
+                            checked={currentPermissions.shareOnlyOwn}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => updatePermission('shareOnlyOwn', e.target.checked)}
+                          />
+                          <span>仅分享自己创建的仪表盘</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

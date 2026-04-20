@@ -328,6 +328,10 @@
   padding: 8px 0;
 }
 
+.permission-item.sub-permission {
+  padding-left: 30px;
+}
+
 .permission-checkbox {
   width: 18px;
   height: 18px;
