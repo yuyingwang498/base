@@ -9,6 +9,8 @@ interface Props {
 export default function TopBar({ tableName }: Props) {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
+  const [isPersonalDashboardEnabled, setIsPersonalDashboardEnabled] = useState(false);
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   
@@ -145,6 +147,74 @@ export default function TopBar({ tableName }: Props) {
                   <path d="M1222.5 31.8125C1222.5 32.5374 1221.91 33.125 1221.19 33.125C1220.46 33.125 1219.87 32.5374 1219.87 31.8125C1219.87 31.0876 1220.46 30.5 1221.19 30.5C1221.91 30.5 1222.5 31.0876 1222.5 31.8125Z" fill="#2B2F36"/>
                 </svg>
               </button>
+              {isMoreMenuOpen && (
+                <div ref={menuRef} className="topbar-more-dropdown">
+                  <div className="topbar-dropdown-item">
+                    <span className="topbar-dropdown-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      个人仪表盘
+                      <span 
+                        className="topbar-tooltip-trigger"
+                        onMouseEnter={() => setIsTooltipVisible(true)}
+                        onMouseLeave={() => setIsTooltipVisible(false)}
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '50%',
+                          backgroundColor: '#e5e6eb',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          color: '#646a73',
+                          cursor: 'help',
+                          position: 'relative'
+                        }}
+                      >
+                        ?
+                        {isTooltipVisible && (
+                          <span 
+                            className="topbar-tooltip"
+                            style={{
+                              position: 'absolute',
+                              bottom: '100%',
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              marginBottom: '8px',
+                              padding: '8px 12px',
+                              backgroundColor: '#2b2f36',
+                              color: 'white',
+                              fontSize: '12px',
+                              borderRadius: '6px',
+                              whiteSpace: 'nowrap',
+                              zIndex: 1000,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                            }}
+                          >
+                            开启后，所有人均可创建和管理自己的个人仪表盘
+                            <span style={{
+                              position: 'absolute',
+                              top: '100%',
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              border: '6px solid transparent',
+                              borderTopColor: '#2b2f36'
+                            }}></span>
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <label className="topbar-toggle">
+                      <input 
+                        type="checkbox" 
+                        checked={isPersonalDashboardEnabled}
+                        onChange={(e) => setIsPersonalDashboardEnabled(e.target.checked)}
+                      />
+                      <span className="topbar-toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <span className="topbar-divider" />

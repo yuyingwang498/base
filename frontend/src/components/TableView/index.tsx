@@ -12,7 +12,7 @@ interface Props {
   onFieldOrderChange?: (newOrder: string[]) => void;   // Full fieldOrder (including hidden)
   onHideField?: (fieldId: string) => void;
   onDeleteRecords?: (recordIds: string[]) => void;
-  onClearCells?: (cleared: Array<{ recordId: string; fieldId: string; oldValue: CellValue }>) => void;
+  onClearCells?: (cleared: Array<{ recordId: string; fieldId: string; oldValue: CellValue }>, isWholeRowDelete?: boolean) => void;
   fieldOrder?: string[];         // Full fieldOrder from App.tsx (including hidden fields)
 }
 
@@ -686,13 +686,20 @@ const TableView = forwardRef<TableViewHandle, Props>(function TableView({ fields
       onCellChange(recordId, fieldId, '');
     });
     
+    // 检查是否是整行删除（通过检查是否所有选中的单元格都属于已选中的记录）
+    const isWholeRowDelete = selectedRecordIds.size > 0 && 
+      Array.from(selectedCells).every(cellKey => {
+        const [recordId] = cellKey.split('-');
+        return selectedRecordIds.has(recordId);
+      });
+    
     // 通知父组件有单元格被清空
     if (onClearCells) {
-      onClearCells(clearedCellsInfo);
+      onClearCells(clearedCellsInfo, isWholeRowDelete);
     }
     
     clearSelectedCells();
-  }, [selectedCells, records, onCellChange, clearSelectedCells, onClearCells]);
+  }, [selectedCells, records, onCellChange, clearSelectedCells, onClearCells, selectedRecordIds]);
 
   // 计算矩形区域内的所有单元格
   const getSelectedCellsInRange = useCallback((startRecordId: string, startFieldId: string, endRecordId: string, endFieldId: string) => {

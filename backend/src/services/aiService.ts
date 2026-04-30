@@ -2,7 +2,7 @@ import { Field, FilterCondition, FilterGenerateRequest, FilterOperator, ViewFilt
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
-import * as store from "./dbStore.js";
+import * as store from "./dataStore.js";
 
 const ARK_BASE_URL = process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_MODEL = process.env.ARK_MODEL || "ep-20260412192731-vwdh7";
@@ -550,7 +550,7 @@ async function executeTool(
   try {
     if (name === "get_table_brief_info") {
       const tableId = String(args.table_id || "");
-      const info = await store.getTableBriefInfo(tableId);
+      const info = store.getTableBriefInfo(tableId);
       if (!info) return JSON.stringify({ error: "表不存在" });
       return JSON.stringify(info);
     }
@@ -558,7 +558,7 @@ async function executeTool(
       const tableId = String(args.table_id || "");
       const keyword = String(args.keyword || "");
       const fieldId = args.field_id ? String(args.field_id) : undefined;
-      const results = await store.searchRecord(tableId, keyword, fieldId);
+      const results = store.searchRecord(tableId, keyword, fieldId);
       return JSON.stringify(results);
     }
     if (name === "get_view_filter") {
@@ -1078,7 +1078,7 @@ export async function generateFilter(
       const roundElapsed = Date.now() - roundStart;
 
       // Extract usage from response
-      const usage = (result as Record<string, unknown>).usage || null;
+      const usage = (result as unknown as Record<string, unknown>).usage || null;
       usageLog.push({ round, elapsedMs: roundElapsed, usage });
 
       // Log full API response for this round

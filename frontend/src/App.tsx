@@ -296,20 +296,22 @@ export default function App() {
   }, [handleUndoClearCells]);
 
   // 处理单元格清空
-  const handleClearCells = useCallback((cleared: Array<{ recordId: string; fieldId: string; oldValue: CellValue }>) => {
+  const handleClearCells = useCallback((cleared: Array<{ recordId: string; fieldId: string; oldValue: CellValue }>, isWholeRowDelete = false) => {
     setClearedCells(cleared);
-    // 显示 Toast 提示
-    toast.info(`已清空${cleared.length}个单元格，按Cmd+Z可恢复`, {
-      duration: 5000,
-      action: {
-        label: "undo",
-        onClick: () => {
-          if (handleUndoClearCellsRef.current) {
-            handleUndoClearCellsRef.current();
+    // 只有整行删除时才显示 Toast 提示
+    if (isWholeRowDelete) {
+      toast.info(`已清空${cleared.length}个单元格，按Cmd+Z可恢复`, {
+        duration: 5000,
+        action: {
+          label: "undo",
+          onClick: () => {
+            if (handleUndoClearCellsRef.current) {
+              handleUndoClearCellsRef.current();
+            }
           }
         }
-      }
-    });
+      });
+    }
   }, [toast]);
 
   const handleDeleteRecords = useCallback(async (recordIds: string[]) => {

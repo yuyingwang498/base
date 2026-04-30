@@ -14,18 +14,81 @@ interface CustomRole {
 
 export default function PermissionsModal({ isOpen, onClose }: Props) {
   const [selectedRoleId, setSelectedRoleId] = useState("owner");
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("data");
   const { success } = useToast();
   const menuRef = useRef<HTMLDivElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showEditTooltip, setShowEditTooltip] = useState(false);
+  const [showDeleteTooltip, setShowDeleteTooltip] = useState(false);
 
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+  const [dashboards] = useState(['Dashboard 1', 'Dashboard 2', 'Dashboard 3', 'Dashboard 4', 'Dashboard 5']);
+  const [selectedDashboard, setSelectedDashboard] = useState('Dashboard 1');
 
-  const [rolePermissions, setRolePermissions] = useState<Record<string, { enabled: boolean; create: boolean; createOnlyOwn: boolean; delete: boolean; share: boolean; shareOnlyOwn: boolean }>>({
-    owner: { enabled: true, create: true, createOnlyOwn: false, delete: true, share: true, shareOnlyOwn: false },
-    admin: { enabled: true, create: true, createOnlyOwn: false, delete: true, share: true, shareOnlyOwn: false },
-    editor: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
-    viewer: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
+  const [rolePermissions, setRolePermissions] = useState<Record<string, { 
+    create: boolean; 
+    edit: boolean;
+    editMode: 'own' | 'manage';
+    delete: boolean; 
+    deleteOwnOnly: boolean;
+    dashboardPermissions: Record<string, 'edit' | 'read' | 'none'>;
+  }>>({
+    owner: { 
+      create: true, 
+      edit: true, 
+      editMode: 'manage',
+      delete: true, 
+      deleteOwnOnly: false,
+      dashboardPermissions: {
+        'Dashboard 1': 'edit',
+        'Dashboard 2': 'edit',
+        'Dashboard 3': 'edit',
+        'Dashboard 4': 'edit',
+        'Dashboard 5': 'edit'
+      }
+    },
+    admin: { 
+      create: true, 
+      edit: true, 
+      editMode: 'manage',
+      delete: true, 
+      deleteOwnOnly: false,
+      dashboardPermissions: {
+        'Dashboard 1': 'edit',
+        'Dashboard 2': 'edit',
+        'Dashboard 3': 'edit',
+        'Dashboard 4': 'edit',
+        'Dashboard 5': 'edit'
+      }
+    },
+    editor: { 
+      create: false, 
+      edit: false, 
+      editMode: 'own',
+      delete: false, 
+      deleteOwnOnly: true,
+      dashboardPermissions: {
+        'Dashboard 1': 'none',
+        'Dashboard 2': 'none',
+        'Dashboard 3': 'none',
+        'Dashboard 4': 'none',
+        'Dashboard 5': 'none'
+      }
+    },
+    viewer: { 
+      create: false, 
+      edit: false, 
+      editMode: 'own',
+      delete: false, 
+      deleteOwnOnly: true,
+      dashboardPermissions: {
+        'Dashboard 1': 'none',
+        'Dashboard 2': 'none',
+        'Dashboard 3': 'none',
+        'Dashboard 4': 'none',
+        'Dashboard 5': 'none'
+      }
+    },
   });
 
   const [renamingRoleId, setRenamingRoleId] = useState<string | null>(null);
@@ -55,53 +118,133 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
   const selectedRole = allRoles.find(r => r.id === selectedRoleId);
   const isReadOnlyRole = selectedRoleId === "owner" || selectedRoleId === "admin";
   const isCustomRole = customRoles.some(r => r.id === selectedRoleId);
-  const currentPermissions = rolePermissions[selectedRoleId] || { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true };
+  const currentPermissions = rolePermissions[selectedRoleId] || { 
+    create: false, 
+    edit: false,
+    editMode: 'own',
+    delete: false, 
+    deleteOwnOnly: true,
+    dashboardPermissions: {}
+  };
+
+  const getDashboardPermission = (dashboard: string) => {
+    return currentPermissions.dashboardPermissions[dashboard] || 'none';
+  };
 
   const handleRoleChange = (roleId: string) => {
     setSelectedRoleId(roleId);
   };
 
-  const updatePermission = (key: 'enabled' | 'create' | 'createOnlyOwn' | 'delete' | 'share' | 'shareOnlyOwn', value: boolean) => {
+  const updatePermission = (key: 'create' | 'edit' | 'delete', value: boolean) => {
     setRolePermissions(prev => {
-      const current = prev[selectedRoleId] || { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true };
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        delete: false, 
+        deleteOwnOnly: true,
+        dashboardPermissions: {}
+      };
       
       let newPermissions = { ...current, [key]: value };
       
-      // 开启仪表盘权限时，默认勾选下面所有权限
-      if (key === 'enabled' && value === true) {
-        newPermissions = {
-          ...newPermissions,
-          create: true,
-          createOnlyOwn: true,
-          delete: true,
-          share: true,
-          shareOnlyOwn: true,
-        };
-      }
-      
-      // 勾选创建仪表盘时，默认勾选仅编辑自己创建的
+      // 勾选创建仪表盘时，默认勾选编辑仪表盘
       if (key === 'create' && value === true) {
-        newPermissions.createOnlyOwn = true;
-      }
-      
-      // 勾选分享仪表盘时，默认勾选仅分享自己创建的
-      if (key === 'share' && value === true) {
-        newPermissions.shareOnlyOwn = true;
-      }
-      
-      // 取消创建时，也取消仅编辑自己创建的
-      if (key === 'create' && value === false) {
-        newPermissions.createOnlyOwn = true;
-      }
-      
-      // 取消分享时，也取消仅分享自己创建的
-      if (key === 'share' && value === false) {
-        newPermissions.shareOnlyOwn = true;
+        newPermissions.edit = true;
       }
       
       return {
         ...prev,
         [selectedRoleId]: newPermissions,
+      };
+    });
+  };
+
+  const updateDashboardPermission = (dashboard: string, permission: 'edit' | 'read' | 'none') => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        delete: false, 
+        deleteOwnOnly: true,
+        dashboardPermissions: {}
+      };
+      
+      return {
+        ...prev,
+        [selectedRoleId]: {
+          ...current,
+          dashboardPermissions: {
+            ...current.dashboardPermissions,
+            [dashboard]: permission
+          }
+        }
+      };
+    });
+  };
+
+  const toggleAllDashboardsWithPermission = (permission: 'edit' | 'read' | 'none') => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        delete: false, 
+        deleteOwnOnly: true,
+        dashboardPermissions: {}
+      };
+      
+      const newDashboardPermissions: Record<string, 'edit' | 'read' | 'none'> = {};
+      dashboards.forEach(dashboard => {
+        newDashboardPermissions[dashboard] = permission;
+      });
+      
+      return {
+        ...prev,
+        [selectedRoleId]: {
+          ...current,
+          dashboardPermissions: newDashboardPermissions
+        }
+      };
+    });
+  };
+
+  const updateDeleteOwnOnly = (value: boolean) => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        editMode: 'own',
+        delete: false, 
+        deleteOwnOnly: true,
+        dashboardPermissions: {}
+      };
+      
+      return {
+        ...prev,
+        [selectedRoleId]: {
+          ...current,
+          deleteOwnOnly: value
+        }
+      };
+    });
+  };
+
+  const updateEditMode = (mode: 'own' | 'manage') => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        editMode: 'own',
+        delete: false, 
+        deleteOwnOnly: true,
+        dashboardPermissions: {}
+      };
+      
+      return {
+        ...prev,
+        [selectedRoleId]: {
+          ...current,
+          editMode: mode
+        }
       };
     });
   };
@@ -123,9 +266,16 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       name: "新角色",
     };
     setCustomRoles(prev => [...prev, newRole]);
+    
+    // 为新角色初始化所有dashboard的权限
+    const initialDashboardPermissions: Record<string, 'edit' | 'read' | 'none'> = {};
+    dashboards.forEach(dashboard => {
+      initialDashboardPermissions[dashboard] = 'none';
+    });
+    
     setRolePermissions(prev => ({
       ...prev,
-      [newId]: { enabled: false, create: false, createOnlyOwn: true, delete: false, share: false, shareOnlyOwn: true },
+      [newId]: { create: false, edit: false, editMode: 'own', delete: false, deleteOwnOnly: true, dashboardPermissions: initialDashboardPermissions },
     }));
     setSelectedRoleId(newId);
     setRenamingRoleId(newId);
@@ -378,23 +528,15 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
             </div>
 
             <div className="permissions-tab-content">
+              {activeTab === "data" && (
+                <div style={{ color: "#8F959E", padding: "40px 0", textAlign: "center" }}>
+                  数据权限功能开发中...
+                </div>
+              )}
               {activeTab === "dashboard" && (
                 <div>
                   <div className="permission-section">
-                    <div className="permission-section-title">开启权限</div>
-                    <div className="permission-item">
-                      <input 
-                        type="checkbox" 
-                        checked={currentPermissions.enabled}
-                        disabled={isReadOnlyRole}
-                        onChange={(e) => updatePermission('enabled', e.target.checked)}
-                      />
-                      <span>开启仪表盘权限设置</span>
-                    </div>
-                  </div>
-                  {currentPermissions.enabled && (
-                    <div className="permission-section">
-                      <div className="permission-section-title">基础功能</div>
+                    <div className="permission-section-title">基础功能</div>
                       <div className="permission-item">
                         <input 
                           type="checkbox" 
@@ -402,17 +544,126 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                           disabled={isReadOnlyRole}
                           onChange={(e) => updatePermission('create', e.target.checked)}
                         />
-                        <span>创建仪表盘</span>
+                        <span>可创建</span>
                       </div>
-                      {currentPermissions.create && (
-                        <div className="permission-item sub-permission">
-                          <input 
-                            type="checkbox" 
-                            checked={currentPermissions.createOnlyOwn}
-                            disabled={isReadOnlyRole}
-                            onChange={(e) => updatePermission('createOnlyOwn', e.target.checked)}
-                          />
-                          <span>仅编辑自己创建的仪表盘</span>
+                      <div className="permission-item">
+                        <input 
+                          type="checkbox" 
+                          checked={currentPermissions.edit}
+                          disabled={isReadOnlyRole}
+                          onChange={(e) => updatePermission('edit', e.target.checked)}
+                        />
+                        <span>编辑权限管理</span>
+                      </div>
+                      {currentPermissions.edit && (
+                        <div className="permission-scope-container" style={{ paddingLeft: '24px', marginBottom: '16px' }}>
+                          <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                            <input 
+                              type="radio" 
+                              name="edit-mode"
+                              checked={currentPermissions.editMode === 'own'}
+                              disabled={isReadOnlyRole}
+                              onChange={() => updateEditMode('own')}
+                            />
+                            <span>只能编辑自己创建的仪表盘</span>
+                          </div>
+                          <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                            <input 
+                              type="radio" 
+                              name="edit-mode"
+                              checked={currentPermissions.editMode === 'manage'}
+                              disabled={isReadOnlyRole}
+                              onChange={() => updateEditMode('manage')}
+                            />
+                            <span>管理仪表盘</span>
+                          </div>
+                          {currentPermissions.editMode === 'manage' && (
+                            <div style={{ marginTop: '12px', marginLeft: '24px' }}>
+                              <div style={{ 
+                                color: '#8F959E', 
+                                fontSize: '13px', 
+                                marginBottom: '12px',
+                                padding: '8px 12px',
+                                backgroundColor: '#FFF9E6',
+                                border: '1px solid #FFE9A6',
+                                borderRadius: '4px'
+                              }}>
+                                该配置仅针对角色生效，仪表盘创建人仍可以编辑仪表盘
+                              </div>
+                              <div style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: '1fr 1fr 1fr 1fr', 
+                                gap: '8px',
+                                border: '1px solid #e5e6eb',
+                                borderRadius: '6px',
+                                padding: '12px',
+                                backgroundColor: '#f9fafb'
+                              }}>
+                                <div style={{ fontWeight: 500 }}>仪表盘名称</div>
+                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={dashboards.every(d => getDashboardPermission(d) === 'edit')}
+                                    disabled={isReadOnlyRole}
+                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('edit')}
+                                  />
+                                  可编辑
+                                </div>
+                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={dashboards.every(d => getDashboardPermission(d) === 'read')}
+                                    disabled={isReadOnlyRole}
+                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('read')}
+                                  />
+                                  可阅读
+                                </div>
+                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={dashboards.every(d => getDashboardPermission(d) === 'none')}
+                                    disabled={isReadOnlyRole}
+                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('none')}
+                                  />
+                                  无权限
+                                </div>
+                                {dashboards.map(dashboard => (
+                                  <>
+                                    <div key={`name-${dashboard}`} style={{ padding: '8px 0' }}>
+                                      {dashboard}
+                                    </div>
+                                    <div key={`edit-${dashboard}`} style={{ padding: '8px 0' }}>
+                                      <input 
+                                        type="radio" 
+                                        name={`permission-${dashboard}`}
+                                        checked={getDashboardPermission(dashboard) === 'edit'}
+                                        disabled={isReadOnlyRole}
+                                        onChange={() => updateDashboardPermission(dashboard, 'edit')}
+                                      />
+                                    </div>
+                                    <div key={`read-${dashboard}`} style={{ padding: '8px 0' }}>
+                                      <input 
+                                        type="radio" 
+                                        name={`permission-${dashboard}`}
+                                        checked={getDashboardPermission(dashboard) === 'read'}
+                                        disabled={isReadOnlyRole}
+                                        onChange={() => updateDashboardPermission(dashboard, 'read')}
+                                      />
+                                    </div>
+                                    <div key={`none-${dashboard}`} style={{ padding: '8px 0' }}>
+                                      <input 
+                                        type="radio" 
+                                        name={`permission-${dashboard}`}
+                                        checked={getDashboardPermission(dashboard) === 'none'}
+                                        disabled={isReadOnlyRole}
+                                        onChange={() => updateDashboardPermission(dashboard, 'none')}
+                                      />
+                                    </div>
+                                  </>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       <div className="permission-item">
@@ -422,30 +673,23 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                           disabled={isReadOnlyRole}
                           onChange={(e) => updatePermission('delete', e.target.checked)}
                         />
-                        <span>{isReadOnlyRole ? '删除仪表盘' : '删除自己创建的仪表盘'}</span>
+                        <span>可删除</span>
                       </div>
-                      <div className="permission-item">
-                        <input 
-                          type="checkbox" 
-                          checked={currentPermissions.share}
-                          disabled={isReadOnlyRole}
-                          onChange={(e) => updatePermission('share', e.target.checked)}
-                        />
-                        <span>分享仪表盘</span>
-                      </div>
-                      {currentPermissions.share && (
-                        <div className="permission-item sub-permission">
-                          <input 
-                            type="checkbox" 
-                            checked={currentPermissions.shareOnlyOwn}
-                            disabled={isReadOnlyRole}
-                            onChange={(e) => updatePermission('shareOnlyOwn', e.target.checked)}
-                          />
-                          <span>仅分享自己创建的仪表盘</span>
+                      {currentPermissions.delete && (
+                        <div className="permission-scope-container" style={{ paddingLeft: '24px', marginBottom: '16px' }}>
+                          <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={currentPermissions.deleteOwnOnly}
+                              disabled={isReadOnlyRole}
+                              onChange={(e) => updateDeleteOwnOnly(e.target.checked)}
+                            />
+                            <span>仅可删除自己创建的</span>
+                          </div>
                         </div>
                       )}
+
                     </div>
-                  )}
                 </div>
               )}
               {activeTab !== "dashboard" && (
