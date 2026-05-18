@@ -178,12 +178,25 @@
   color: var(--color-icon-n1);
 }
 
+.topbar-avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-avatar-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.topbar-plan-item:hover {
+  background: var(--color-bg-hover) !important;
+}
+
 .topbar-avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
-  cursor: pointer;
   flex-shrink: 0;
 }
 

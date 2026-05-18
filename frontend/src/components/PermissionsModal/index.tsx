@@ -5,6 +5,7 @@ import "./PermissionsModal.css";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  selectedPlan?: string;
 }
 
 interface CustomRole {
@@ -12,7 +13,7 @@ interface CustomRole {
   name: string;
 }
 
-export default function PermissionsModal({ isOpen, onClose }: Props) {
+export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方案1' }: Props) {
   const [selectedRoleId, setSelectedRoleId] = useState("owner");
   const [activeTab, setActiveTab] = useState("data");
   const { success } = useToast();
@@ -20,9 +21,78 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showEditTooltip, setShowEditTooltip] = useState(false);
   const [showDeleteTooltip, setShowDeleteTooltip] = useState(false);
+  const [showCreateTooltip, setShowCreateTooltip] = useState(false);
+  const [showPlan3Tooltip, setShowPlan3Tooltip] = useState(false);
+  const [showManageTooltip, setShowManageTooltip] = useState(false);
+  
+  // 方案3相关状态
+  const [visibleDashboardOption, setVisibleDashboardOption] = useState<'all' | 'specific'>('all');
+  const [selectedDashboards, setSelectedDashboards] = useState<Set<string>>(new Set([
+    'dashboard-1', 'dashboard-2', 'dashboard-3', 'dashboard-4', 'dashboard-5'
+  ]));
 
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
-  const [dashboards] = useState(['Dashboard 1', 'Dashboard 2', 'Dashboard 3', 'Dashboard 4', 'Dashboard 5']);
+  
+  interface DashboardNode {
+    id: string;
+    name: string;
+    type: 'dashboard' | 'folder';
+    children?: DashboardNode[];
+  }
+  
+  const [dashboardTree] = useState<DashboardNode[]>([
+    {
+      id: 'dashboard-1',
+      name: 'Dashboard 1',
+      type: 'dashboard'
+    },
+    {
+      id: 'folder-1',
+      name: '文件夹',
+      type: 'folder',
+      children: [
+        {
+          id: 'dashboard-2',
+          name: 'Dashboard 2',
+          type: 'dashboard'
+        }
+      ]
+    },
+    {
+      id: 'folder-2',
+      name: '文件夹 1',
+      type: 'folder',
+      children: [
+        {
+          id: 'dashboard-3',
+          name: 'Dashboard 3',
+          type: 'dashboard'
+        },
+        {
+          id: 'folder-3',
+          name: '文件夹 2',
+          type: 'folder',
+          children: [
+            {
+              id: 'dashboard-4',
+              name: 'Dashboard 4',
+              type: 'dashboard'
+            },
+            {
+              id: 'dashboard-5',
+              name: 'Dashboard 5',
+              type: 'dashboard'
+            }
+          ]
+        }
+      ]
+    }
+  ]);
+  
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([
+    'folder-1', 'folder-2', 'folder-3'
+  ]));
+  
   const [selectedDashboard, setSelectedDashboard] = useState('Dashboard 1');
 
   const [rolePermissions, setRolePermissions] = useState<Record<string, { 
@@ -31,7 +101,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     editMode: 'own' | 'manage';
     delete: boolean; 
     deleteOwnOnly: boolean;
-    dashboardPermissions: Record<string, 'edit' | 'read' | 'none'>;
+    dashboardPermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'>;
   }>>({
     owner: { 
       create: true, 
@@ -40,11 +110,11 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       delete: true, 
       deleteOwnOnly: false,
       dashboardPermissions: {
-        'Dashboard 1': 'edit',
-        'Dashboard 2': 'edit',
-        'Dashboard 3': 'edit',
-        'Dashboard 4': 'edit',
-        'Dashboard 5': 'edit'
+        'dashboard-1': 'edit',
+        'dashboard-2': 'edit',
+        'dashboard-3': 'edit',
+        'dashboard-4': 'edit',
+        'dashboard-5': 'edit'
       }
     },
     admin: { 
@@ -54,11 +124,11 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       delete: true, 
       deleteOwnOnly: false,
       dashboardPermissions: {
-        'Dashboard 1': 'edit',
-        'Dashboard 2': 'edit',
-        'Dashboard 3': 'edit',
-        'Dashboard 4': 'edit',
-        'Dashboard 5': 'edit'
+        'dashboard-1': 'edit',
+        'dashboard-2': 'edit',
+        'dashboard-3': 'edit',
+        'dashboard-4': 'edit',
+        'dashboard-5': 'edit'
       }
     },
     editor: { 
@@ -66,13 +136,13 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       edit: false, 
       editMode: 'own',
       delete: false, 
-      deleteOwnOnly: true,
+      deleteOwnOnly: false,
       dashboardPermissions: {
-        'Dashboard 1': 'none',
-        'Dashboard 2': 'none',
-        'Dashboard 3': 'none',
-        'Dashboard 4': 'none',
-        'Dashboard 5': 'none'
+        'dashboard-1': 'none',
+        'dashboard-2': 'none',
+        'dashboard-3': 'none',
+        'dashboard-4': 'none',
+        'dashboard-5': 'none'
       }
     },
     viewer: { 
@@ -80,13 +150,13 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       edit: false, 
       editMode: 'own',
       delete: false, 
-      deleteOwnOnly: true,
+      deleteOwnOnly: false,
       dashboardPermissions: {
-        'Dashboard 1': 'none',
-        'Dashboard 2': 'none',
-        'Dashboard 3': 'none',
-        'Dashboard 4': 'none',
-        'Dashboard 5': 'none'
+        'dashboard-1': 'none',
+        'dashboard-2': 'none',
+        'dashboard-3': 'none',
+        'dashboard-4': 'none',
+        'dashboard-5': 'none'
       }
     },
   });
@@ -123,12 +193,75 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     edit: false,
     editMode: 'own',
     delete: false, 
-    deleteOwnOnly: true,
+    deleteOwnOnly: false,
     dashboardPermissions: {}
   };
 
-  const getDashboardPermission = (dashboard: string) => {
-    return currentPermissions.dashboardPermissions[dashboard] || 'none';
+  const getDashboardPermission = (dashboardId: string) => {
+    return currentPermissions.dashboardPermissions[dashboardId] || 'none';
+  };
+  
+  const toggleFolder = (folderId: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderId)) {
+      newExpanded.delete(folderId);
+    } else {
+      newExpanded.add(folderId);
+    }
+    setExpandedFolders(newExpanded);
+  };
+  
+  const flattenDashboards = (nodes: DashboardNode[]): string[] => {
+    let result: string[] = [];
+    for (const node of nodes) {
+      if (node.type === 'dashboard') {
+        result.push(node.id);
+      } else if (node.children) {
+        result = result.concat(flattenDashboards(node.children));
+      }
+    }
+    return result;
+  };
+
+  // 方案3辅助函数：获取所有仪表盘名称
+  const getDashboardName = (dashboardId: string): string => {
+    const findNode = (nodes: DashboardNode[]): string | null => {
+      for (const node of nodes) {
+        if (node.id === dashboardId) {
+          return node.name;
+        }
+        if (node.children) {
+          const found = findNode(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return findNode(dashboardTree) || dashboardId;
+  };
+
+  // 方案3辅助函数：切换仪表盘选中状态
+  const toggleDashboardSelection = (dashboardId: string) => {
+    setSelectedDashboards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dashboardId)) {
+        newSet.delete(dashboardId);
+      } else {
+        newSet.add(dashboardId);
+      }
+      return newSet;
+    });
+  };
+
+  // 方案3辅助函数：全选/取消全选
+  const toggleSelectAllDashboards = () => {
+    const allDashboards = flattenDashboards(dashboardTree);
+    const isAllSelected = allDashboards.every(id => selectedDashboards.has(id));
+    if (isAllSelected) {
+      setSelectedDashboards(new Set());
+    } else {
+      setSelectedDashboards(new Set(allDashboards));
+    }
   };
 
   const handleRoleChange = (roleId: string) => {
@@ -141,7 +274,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
         create: false, 
         edit: false,
         delete: false, 
-        deleteOwnOnly: true,
+        deleteOwnOnly: false,
         dashboardPermissions: {}
       };
       
@@ -159,13 +292,13 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     });
   };
 
-  const updateDashboardPermission = (dashboard: string, permission: 'edit' | 'read' | 'none') => {
+  const updateDashboardPermission = (dashboard: string, permission: 'manage' | 'edit' | 'read' | 'none') => {
     setRolePermissions(prev => {
       const current = prev[selectedRoleId] || { 
         create: false, 
         edit: false,
         delete: false, 
-        deleteOwnOnly: true,
+        deleteOwnOnly: false,
         dashboardPermissions: {}
       };
       
@@ -182,19 +315,20 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     });
   };
 
-  const toggleAllDashboardsWithPermission = (permission: 'edit' | 'read' | 'none') => {
+  const toggleAllDashboardsWithPermission = (permission: 'manage' | 'edit' | 'read' | 'none') => {
     setRolePermissions(prev => {
       const current = prev[selectedRoleId] || { 
         create: false, 
         edit: false,
         delete: false, 
-        deleteOwnOnly: true,
+        deleteOwnOnly: false,
         dashboardPermissions: {}
       };
       
-      const newDashboardPermissions: Record<string, 'edit' | 'read' | 'none'> = {};
-      dashboards.forEach(dashboard => {
-        newDashboardPermissions[dashboard] = permission;
+      const newDashboardPermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'> = {};
+      const allDashboards = flattenDashboards(dashboardTree);
+      allDashboards.forEach(dashboardId => {
+        newDashboardPermissions[dashboardId] = permission;
       });
       
       return {
@@ -206,6 +340,137 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
       };
     });
   };
+  
+  const renderDashboardNode = (node: DashboardNode, level: number = 0, selectedPlan?: string) => {
+    const isExpanded = expandedFolders.has(node.id);
+    const indentWidth = 20; // 每层缩进宽度
+    const paddingLeft = level * indentWidth;
+    
+    const elements: JSX.Element[] = [];
+    
+    // 添加当前节点
+    if (node.type === 'dashboard') {
+      elements.push(
+        <div key={`name-${node.id}`} style={{ 
+          padding: '8px 0', 
+          paddingLeft: `${paddingLeft}px`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          {/* 占位空间，与展开按钮对齐 */}
+          <div style={{ width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}></div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="1.5" style={{ flexShrink: 0 }}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
+          </svg>
+          <span style={{ flex: 1 }}>{node.name}</span>
+        </div>
+      );
+      if (selectedPlan === '方案3') {
+        elements.push(
+          <div key={`manage-${node.id}`} style={{ padding: '8px 0', display: 'flex', justifyContent: 'center' }}>
+            <input 
+              type="radio" 
+              name={`permission-${node.id}`}
+              checked={getDashboardPermission(node.id) === 'manage'}
+              disabled={isReadOnlyRole}
+              onChange={() => updateDashboardPermission(node.id, 'manage')}
+            />
+          </div>
+        );
+      }
+      elements.push(
+        <div key={`edit-${node.id}`} style={{ padding: '8px 0', display: 'flex', justifyContent: 'center' }}>
+          <input 
+            type="radio" 
+            name={`permission-${node.id}`}
+            checked={getDashboardPermission(node.id) === 'edit'}
+            disabled={isReadOnlyRole}
+            onChange={() => updateDashboardPermission(node.id, 'edit')}
+          />
+        </div>
+      );
+      elements.push(
+        <div key={`read-${node.id}`} style={{ padding: '8px 0', display: 'flex', justifyContent: 'center' }}>
+          <input 
+            type="radio" 
+            name={`permission-${node.id}`}
+            checked={getDashboardPermission(node.id) === 'read'}
+            disabled={isReadOnlyRole}
+            onChange={() => updateDashboardPermission(node.id, 'read')}
+          />
+        </div>
+      );
+      elements.push(
+        <div key={`none-${node.id}`} style={{ padding: '8px 0', display: 'flex', justifyContent: 'center' }}>
+          <input 
+            type="radio" 
+            name={`permission-${node.id}`}
+            checked={getDashboardPermission(node.id) === 'none'}
+            disabled={isReadOnlyRole}
+            onChange={() => updateDashboardPermission(node.id, 'none')}
+          />
+        </div>
+      );
+    } else {
+      // 文件夹节点
+      elements.push(
+        <div key={`name-${node.id}`} style={{ 
+          padding: '8px 0', 
+          paddingLeft: `${paddingLeft}px`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <button
+            onClick={() => toggleFolder(node.id)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '20px',
+              height: '20px',
+              flexShrink: 0
+            }}
+          >
+            {isExpanded ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="2">
+                <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#FCD34D" stroke="#D97706" strokeWidth="1" style={{ flexShrink: 0 }}>
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          <span style={{ flex: 1 }}>{node.name}</span>
+        </div>
+      );
+      if (selectedPlan === '方案3') {
+        elements.push(<div key={`manage-${node.id}`} style={{ padding: '8px 0' }}></div>);
+      }
+      elements.push(<div key={`edit-${node.id}`} style={{ padding: '8px 0' }}></div>);
+      elements.push(<div key={`read-${node.id}`} style={{ padding: '8px 0' }}></div>);
+      elements.push(<div key={`none-${node.id}`} style={{ padding: '8px 0' }}></div>);
+      
+      // 如果文件夹展开且有子节点，递归添加
+      if (isExpanded && node.children) {
+        node.children.forEach(child => {
+          elements.push(...renderDashboardNode(child, level + 1, selectedPlan));
+        });
+      }
+    }
+    
+    return elements;
+  };
 
   const updateDeleteOwnOnly = (value: boolean) => {
     setRolePermissions(prev => {
@@ -214,7 +479,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
         edit: false,
         editMode: 'own',
         delete: false, 
-        deleteOwnOnly: true,
+        deleteOwnOnly: false,
         dashboardPermissions: {}
       };
       
@@ -235,7 +500,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
         edit: false,
         editMode: 'own',
         delete: false, 
-        deleteOwnOnly: true,
+        deleteOwnOnly: false,
         dashboardPermissions: {}
       };
       
@@ -269,13 +534,14 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
     
     // 为新角色初始化所有dashboard的权限
     const initialDashboardPermissions: Record<string, 'edit' | 'read' | 'none'> = {};
-    dashboards.forEach(dashboard => {
-      initialDashboardPermissions[dashboard] = 'none';
+    const allDashboards = flattenDashboards(dashboardTree);
+    allDashboards.forEach(dashboardId => {
+      initialDashboardPermissions[dashboardId] = 'none';
     });
     
     setRolePermissions(prev => ({
       ...prev,
-      [newId]: { create: false, edit: false, editMode: 'own', delete: false, deleteOwnOnly: true, dashboardPermissions: initialDashboardPermissions },
+      [newId]: { create: false, edit: false, editMode: 'own', delete: false, deleteOwnOnly: false, dashboardPermissions: initialDashboardPermissions },
     }));
     setSelectedRoleId(newId);
     setRenamingRoleId(newId);
@@ -535,9 +801,185 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
               )}
               {activeTab === "dashboard" && (
                 <div>
-                  <div className="permission-section">
-                    <div className="permission-section-title">基础功能</div>
-                      <div className="permission-item">
+                  {selectedPlan === '方案1' ? (
+                    <>
+                      {/* 方案1：合并可创建和可删除为一个选项 */}
+                      <div className="permission-item" style={{ marginBottom: '8px' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={currentPermissions.create || currentPermissions.delete}
+                          disabled={isReadOnlyRole}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setRolePermissions(prev => {
+                              const current = prev[selectedRoleId] || { 
+                                create: false, 
+                                edit: false,
+                                delete: false, 
+                                deleteOwnOnly: true,
+                                dashboardPermissions: {}
+                              };
+                              return {
+                                ...prev,
+                                [selectedRoleId]: {
+                                  ...current,
+                                  create: checked,
+                                  delete: checked,
+                                  deleteOwnOnly: checked, // 勾选时默认勾选仅可删除自己创建的
+                                  edit: checked ? true : current.edit
+                                }
+                              };
+                            });
+                          }}
+                        />
+                        <span>可新增、删除仪表盘</span>
+                      </div>
+                      {/* 固定展示仅可删除自己创建的选项 */}
+                      <div className="permission-scope-container" style={{ paddingLeft: '24px', marginBottom: '16px' }}>
+                        <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={currentPermissions.deleteOwnOnly}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => updateDeleteOwnOnly(e.target.checked)}
+                          />
+                          <span>仅可删除自己创建的仪表盘</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : selectedPlan === '方案2' ? (
+                    <>
+                      {/* 方案2：只有可创建仪表盘，带问号提示 */}
+                      <div className="permission-item" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={currentPermissions.create}
+                          disabled={isReadOnlyRole}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setRolePermissions(prev => {
+                              const current = prev[selectedRoleId] || { 
+                                create: false, 
+                                edit: false,
+                                delete: false, 
+                                deleteOwnOnly: false,
+                                dashboardPermissions: {}
+                              };
+                              return {
+                                ...prev,
+                                [selectedRoleId]: {
+                                  ...current,
+                                  create: checked,
+                                  edit: checked ? true : current.edit
+                                }
+                              };
+                            });
+                          }}
+                        />
+                        <span>可创建仪表盘</span>
+                        <div className="tooltip-container" style={{ position: 'relative', display: 'inline-flex' }}
+                             onMouseEnter={() => setShowCreateTooltip(true)}
+                             onMouseLeave={() => setShowCreateTooltip(false)}>
+                          <span style={{
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#E5E6EB',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            color: '#8F959E',
+                            cursor: 'help',
+                            fontWeight: '600'
+                          }}>?</span>
+                          <div className="tooltip-content" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '100%',
+                            transform: 'translateY(-50%)',
+                            marginLeft: '8px',
+                            padding: '8px 12px',
+                            backgroundColor: '#1D2129',
+                            color: '#FFFFFF',
+                            fontSize: '12px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            display: showCreateTooltip ? 'block' : 'none'
+                          }}>
+                            创建者可编辑和删除自己创建的仪表盘
+                            <div style={{
+                              position: 'absolute',
+                              top: '50%',
+                              right: '100%',
+                              transform: 'translateY(-50%)',
+                              border: '5px solid transparent',
+                              borderRightColor: '#1D2129'
+                            }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : selectedPlan === '方案3' ? (
+                    <>
+                      {/* 方案3：在方案2的基础上增加可管理列 */}
+                      <div className="permission-item" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={currentPermissions.create}
+                          disabled={isReadOnlyRole}
+                          onChange={(e) => updatePermission('create', e.target.checked)}
+                        />
+                        <span>可创建仪表盘</span>
+                        <div className="tooltip-container" style={{ position: 'relative', display: 'inline-flex' }}
+                             onMouseEnter={() => setShowCreateTooltip(true)}
+                             onMouseLeave={() => setShowCreateTooltip(false)}>
+                          <span style={{
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#E5E6EB',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            color: '#8F959E',
+                            cursor: 'help',
+                            fontWeight: '600'
+                          }}>?</span>
+                          <div className="tooltip-content" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '100%',
+                            transform: 'translateY(-50%)',
+                            marginLeft: '8px',
+                            padding: '8px 12px',
+                            backgroundColor: '#1D2129',
+                            color: '#FFFFFF',
+                            fontSize: '12px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                            zIndex: 1000,
+                            display: showCreateTooltip ? 'block' : 'none'
+                          }}>
+                            创建者可编辑和删除自己创建的仪表盘
+                            <div style={{
+                              position: 'absolute',
+                              top: '50%',
+                              right: '100%',
+                              transform: 'translateY(-50%)',
+                              border: '5px solid transparent',
+                              borderRightColor: '#1D2129'
+                            }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* 其他方案：保持原样 */}
+                      <div className="permission-item" style={{ marginBottom: '8px' }}>
                         <input 
                           type="checkbox" 
                           checked={currentPermissions.create}
@@ -546,127 +988,7 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                         />
                         <span>可创建</span>
                       </div>
-                      <div className="permission-item">
-                        <input 
-                          type="checkbox" 
-                          checked={currentPermissions.edit}
-                          disabled={isReadOnlyRole}
-                          onChange={(e) => updatePermission('edit', e.target.checked)}
-                        />
-                        <span>编辑权限管理</span>
-                      </div>
-                      {currentPermissions.edit && (
-                        <div className="permission-scope-container" style={{ paddingLeft: '24px', marginBottom: '16px' }}>
-                          <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
-                            <input 
-                              type="radio" 
-                              name="edit-mode"
-                              checked={currentPermissions.editMode === 'own'}
-                              disabled={isReadOnlyRole}
-                              onChange={() => updateEditMode('own')}
-                            />
-                            <span>只能编辑自己创建的仪表盘</span>
-                          </div>
-                          <div className="permission-scope-option" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
-                            <input 
-                              type="radio" 
-                              name="edit-mode"
-                              checked={currentPermissions.editMode === 'manage'}
-                              disabled={isReadOnlyRole}
-                              onChange={() => updateEditMode('manage')}
-                            />
-                            <span>管理仪表盘</span>
-                          </div>
-                          {currentPermissions.editMode === 'manage' && (
-                            <div style={{ marginTop: '12px', marginLeft: '24px' }}>
-                              <div style={{ 
-                                color: '#8F959E', 
-                                fontSize: '13px', 
-                                marginBottom: '12px',
-                                padding: '8px 12px',
-                                backgroundColor: '#FFF9E6',
-                                border: '1px solid #FFE9A6',
-                                borderRadius: '4px'
-                              }}>
-                                该配置仅针对角色生效，仪表盘创建人仍可以编辑仪表盘
-                              </div>
-                              <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: '1fr 1fr 1fr 1fr', 
-                                gap: '8px',
-                                border: '1px solid #e5e6eb',
-                                borderRadius: '6px',
-                                padding: '12px',
-                                backgroundColor: '#f9fafb'
-                              }}>
-                                <div style={{ fontWeight: 500 }}>仪表盘名称</div>
-                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={dashboards.every(d => getDashboardPermission(d) === 'edit')}
-                                    disabled={isReadOnlyRole}
-                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('edit')}
-                                  />
-                                  可编辑
-                                </div>
-                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={dashboards.every(d => getDashboardPermission(d) === 'read')}
-                                    disabled={isReadOnlyRole}
-                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('read')}
-                                  />
-                                  可阅读
-                                </div>
-                                <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={dashboards.every(d => getDashboardPermission(d) === 'none')}
-                                    disabled={isReadOnlyRole}
-                                    onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('none')}
-                                  />
-                                  无权限
-                                </div>
-                                {dashboards.map(dashboard => (
-                                  <>
-                                    <div key={`name-${dashboard}`} style={{ padding: '8px 0' }}>
-                                      {dashboard}
-                                    </div>
-                                    <div key={`edit-${dashboard}`} style={{ padding: '8px 0' }}>
-                                      <input 
-                                        type="radio" 
-                                        name={`permission-${dashboard}`}
-                                        checked={getDashboardPermission(dashboard) === 'edit'}
-                                        disabled={isReadOnlyRole}
-                                        onChange={() => updateDashboardPermission(dashboard, 'edit')}
-                                      />
-                                    </div>
-                                    <div key={`read-${dashboard}`} style={{ padding: '8px 0' }}>
-                                      <input 
-                                        type="radio" 
-                                        name={`permission-${dashboard}`}
-                                        checked={getDashboardPermission(dashboard) === 'read'}
-                                        disabled={isReadOnlyRole}
-                                        onChange={() => updateDashboardPermission(dashboard, 'read')}
-                                      />
-                                    </div>
-                                    <div key={`none-${dashboard}`} style={{ padding: '8px 0' }}>
-                                      <input 
-                                        type="radio" 
-                                        name={`permission-${dashboard}`}
-                                        checked={getDashboardPermission(dashboard) === 'none'}
-                                        disabled={isReadOnlyRole}
-                                        onChange={() => updateDashboardPermission(dashboard, 'none')}
-                                      />
-                                    </div>
-                                  </>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="permission-item">
+                      <div className="permission-item" style={{ marginBottom: '8px' }}>
                         <input 
                           type="checkbox" 
                           checked={currentPermissions.delete}
@@ -688,8 +1010,106 @@ export default function PermissionsModal({ isOpen, onClose }: Props) {
                           </div>
                         </div>
                       )}
+                    </>
+                  )}
 
-                    </div>
+                  {true && (
+                    <>
+
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: selectedPlan === '方案3' ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr 1fr', 
+                        gap: '8px',
+                        border: '1px solid #e5e6eb',
+                        borderRadius: '6px',
+                        padding: '12px',
+                        backgroundColor: '#f9fafb'
+                      }}>
+                        <div style={{ fontWeight: 500 }}>仪表盘名称</div>
+                        {selectedPlan === '方案3' && (
+                          <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={flattenDashboards(dashboardTree).every(d => getDashboardPermission(d) === 'manage')}
+                              disabled={isReadOnlyRole}
+                              onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('manage')}
+                            />
+                            <span>可管理</span>
+                            <div className="tooltip-container" style={{ position: 'relative', display: 'inline-flex' }}
+                                 onMouseEnter={() => setShowManageTooltip(true)}
+                                 onMouseLeave={() => setShowManageTooltip(false)}>
+                              <span style={{
+                                width: '16px',
+                                height: '16px',
+                                borderRadius: '50%',
+                                backgroundColor: '#E5E6EB',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '11px',
+                                color: '#8F959E',
+                                cursor: 'help',
+                                fontWeight: '600'
+                              }}>?</span>
+                              <div className="tooltip-content" style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                marginTop: '4px',
+                                padding: '6px 10px',
+                                backgroundColor: '#1D2129',
+                                color: '#FFFFFF',
+                                fontSize: '12px',
+                                borderRadius: '4px',
+                                whiteSpace: 'nowrap',
+                                zIndex: 1000,
+                                display: showManageTooltip ? 'block' : 'none'
+                              }}>
+                                可编辑 + 可删除
+                                <div style={{
+                                  position: 'absolute',
+                                  bottom: '100%',
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
+                                  border: '5px solid transparent',
+                                  borderBottomColor: '#1D2129'
+                                }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={flattenDashboards(dashboardTree).every(d => getDashboardPermission(d) === 'edit')}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('edit')}
+                          />
+                          可编辑
+                        </div>
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={flattenDashboards(dashboardTree).every(d => getDashboardPermission(d) === 'read')}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('read')}
+                          />
+                          可阅读
+                        </div>
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={flattenDashboards(dashboardTree).every(d => getDashboardPermission(d) === 'none')}
+                            disabled={isReadOnlyRole}
+                            onChange={(e) => e.target.checked && toggleAllDashboardsWithPermission('none')}
+                          />
+                          无权限
+                        </div>
+                        {dashboardTree.flatMap(node => renderDashboardNode(node, 0, selectedPlan))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               {activeTab !== "dashboard" && (

@@ -11,14 +11,22 @@ export default function TopBar({ tableName }: Props) {
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [isPersonalDashboardEnabled, setIsPersonalDashboardEnabled] = useState(false);
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const [isPlanMenuOpen, setIsPlanMenuOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string>('方案1');
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const planBtnRef = useRef<HTMLButtonElement>(null);
+  const planMenuRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moreBtnRef.current && !moreBtnRef.current.contains(event.target as Node) &&
           menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsMoreMenuOpen(false);
+      }
+      if (planBtnRef.current && !planBtnRef.current.contains(event.target as Node) &&
+          planMenuRef.current && !planMenuRef.current.contains(event.target as Node)) {
+        setIsPlanMenuOpen(false);
       }
     };
     
@@ -30,6 +38,15 @@ export default function TopBar({ tableName }: Props) {
   
   const toggleMoreMenu = () => {
     setIsMoreMenuOpen(!isMoreMenuOpen);
+  };
+
+  const togglePlanMenu = () => {
+    setIsPlanMenuOpen(!isPlanMenuOpen);
+  };
+
+  const selectPlan = (plan: string) => {
+    setSelectedPlan(plan);
+    setIsPlanMenuOpen(false);
   };
   
   return (
@@ -236,13 +253,112 @@ export default function TopBar({ tableName }: Props) {
             </button>
           </div>
           <span className="topbar-divider" />
-          <img className="topbar-avatar" src="/avatars/wyy.png" alt="avatar" />
+          <div className="topbar-avatar-container">
+            <button 
+              ref={planBtnRef}
+              className="topbar-avatar-btn" 
+              onClick={togglePlanMenu}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                border: 'none',
+                backgroundColor: 'transparent'
+              }}
+            >
+              <img className="topbar-avatar" src="/avatars/wyy.png" alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+              <span style={{ fontSize: '14px', color: '#2B2F36' }}>{selectedPlan}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#646A73" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {isPlanMenuOpen && (
+              <div 
+                ref={planMenuRef} 
+                className="topbar-plan-dropdown"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '4px',
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  zIndex: 1000,
+                  minWidth: '150px',
+                  overflow: 'hidden'
+                }}
+              >
+                <div 
+                  className="topbar-plan-item"
+                  onClick={() => selectPlan('方案1')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: selectedPlan === '方案1' ? '#f5f6f7' : 'transparent'
+                  }}
+                >
+                  <span style={{ fontSize: '14px', color: '#2B2F36' }}>方案1</span>
+                  {selectedPlan === '方案1' && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2F36" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <div 
+                  className="topbar-plan-item"
+                  onClick={() => selectPlan('方案2')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: selectedPlan === '方案2' ? '#f5f6f7' : 'transparent'
+                  }}
+                >
+                  <span style={{ fontSize: '14px', color: '#2B2F36' }}>方案2</span>
+                  {selectedPlan === '方案2' && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2F36" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <div 
+                  className="topbar-plan-item"
+                  onClick={() => selectPlan('方案3')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: selectedPlan === '方案3' ? '#f5f6f7' : 'transparent'
+                  }}
+                >
+                  <span style={{ fontSize: '14px', color: '#2B2F36' }}>方案3</span>
+                  {selectedPlan === '方案3' && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2B2F36" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
       <PermissionsModal 
         isOpen={isPermissionsModalOpen} 
         onClose={() => setIsPermissionsModalOpen(false)} 
+        selectedPlan={selectedPlan}
       />
     </>
   );
