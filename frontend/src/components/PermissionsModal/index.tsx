@@ -102,6 +102,7 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
     delete: boolean; 
     deleteOwnOnly: boolean;
     dashboardPermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'>;
+    dataTablePermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'>;
   }>>({
     owner: { 
       create: true, 
@@ -115,6 +116,10 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
         'dashboard-3': 'edit',
         'dashboard-4': 'edit',
         'dashboard-5': 'edit'
+      },
+      dataTablePermissions: {
+        'data-table': 'manage',
+        'budget-table': 'manage'
       }
     },
     admin: { 
@@ -129,6 +134,10 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
         'dashboard-3': 'edit',
         'dashboard-4': 'edit',
         'dashboard-5': 'edit'
+      },
+      dataTablePermissions: {
+        'data-table': 'manage',
+        'budget-table': 'manage'
       }
     },
     editor: { 
@@ -143,6 +152,10 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
         'dashboard-3': 'none',
         'dashboard-4': 'none',
         'dashboard-5': 'none'
+      },
+      dataTablePermissions: {
+        'data-table': 'edit',
+        'budget-table': 'edit'
       }
     },
     viewer: { 
@@ -157,9 +170,16 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
         'dashboard-3': 'none',
         'dashboard-4': 'none',
         'dashboard-5': 'none'
+      },
+      dataTablePermissions: {
+        'data-table': 'read',
+        'budget-table': 'read'
       }
     },
   });
+
+  // 数据权限相关状态
+  const [selectedDataTable, setSelectedDataTable] = useState('data-table');
 
   const [renamingRoleId, setRenamingRoleId] = useState<string | null>(null);
   const [renameInput, setRenameInput] = useState("");
@@ -194,7 +214,8 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
     editMode: 'own',
     delete: false, 
     deleteOwnOnly: false,
-    dashboardPermissions: {}
+    dashboardPermissions: {},
+    dataTablePermissions: {}
   };
 
   const getDashboardPermission = (dashboardId: string) => {
@@ -340,6 +361,42 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
       };
     });
   };
+
+  // 更新数据表权限
+  const updateDataTablePermission = (tableId: string, permission: 'manage' | 'edit' | 'read' | 'none') => {
+    setRolePermissions(prev => {
+      const current = prev[selectedRoleId] || { 
+        create: false, 
+        edit: false,
+        delete: false, 
+        deleteOwnOnly: false,
+        dashboardPermissions: {},
+        dataTablePermissions: {}
+      };
+      
+      return {
+        ...prev,
+        [selectedRoleId]: {
+          ...current,
+          dataTablePermissions: {
+            ...current.dataTablePermissions,
+            [tableId]: permission
+          }
+        }
+      };
+    });
+  };
+
+  // 获取数据表权限
+  const getDataTablePermission = (tableId: string) => {
+    return currentPermissions.dataTablePermissions?.[tableId] || 'read';
+  };
+
+  // 数据表列表
+  const dataTables = [
+    { id: 'data-table', name: '数据表', icon: 'table' },
+    { id: 'budget-table', name: '预算表', icon: 'budget' }
+  ];
   
   const renderDashboardNode = (node: DashboardNode, level: number = 0, selectedPlan?: string) => {
     const isExpanded = expandedFolders.has(node.id);
@@ -533,15 +590,21 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
     setCustomRoles(prev => [...prev, newRole]);
     
     // 为新角色初始化所有dashboard的权限
-    const initialDashboardPermissions: Record<string, 'edit' | 'read' | 'none'> = {};
+    const initialDashboardPermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'> = {};
     const allDashboards = flattenDashboards(dashboardTree);
     allDashboards.forEach(dashboardId => {
       initialDashboardPermissions[dashboardId] = 'none';
     });
     
+    // 为新角色初始化数据表权限（默认仅可阅读）
+    const initialDataTablePermissions: Record<string, 'manage' | 'edit' | 'read' | 'none'> = {
+      'data-table': 'read',
+      'budget-table': 'read'
+    };
+    
     setRolePermissions(prev => ({
       ...prev,
-      [newId]: { create: false, edit: false, editMode: 'own', delete: false, deleteOwnOnly: false, dashboardPermissions: initialDashboardPermissions },
+      [newId]: { create: false, edit: false, editMode: 'own', delete: false, deleteOwnOnly: false, dashboardPermissions: initialDashboardPermissions, dataTablePermissions: initialDataTablePermissions },
     }));
     setSelectedRoleId(newId);
     setRenamingRoleId(newId);
@@ -795,8 +858,201 @@ export default function PermissionsModal({ isOpen, onClose, selectedPlan = '方�
 
             <div className="permissions-tab-content">
               {activeTab === "data" && (
-                <div style={{ color: "#8F959E", padding: "40px 0", textAlign: "center" }}>
-                  数据权限功能开发中...
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  {/* 左侧：数据表列表 */}
+                  <div style={{ width: '280px', borderRight: '1px solid #E5E6EB', paddingRight: '16px' }}>
+                    <div style={{ marginBottom: '12px', padding: '8px 12px', backgroundColor: '#F5F7FA', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F959E" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                      </svg>
+                      <input 
+                        type="text" 
+                        placeholder="搜索数据表或仪表盘" 
+                        style={{ border: 'none', backgroundColor: 'transparent', outline: 'none', width: '100%', fontSize: '14px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {dataTables.map(table => (
+                        <div 
+                          key={table.id}
+                          onClick={() => setSelectedDataTable(table.id)}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            backgroundColor: selectedDataTable === table.id ? '#E6F0FF' : 'transparent'
+                          }}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 9h18M9 21V9M15 21V9"/>
+                          </svg>
+                          <span style={{ flex: 1, fontSize: '14px' }}>{table.name}</span>
+                          <span style={{ 
+                            fontSize: '12px', 
+                            color: '#8F959E',
+                            backgroundColor: '#F5F7FA',
+                            padding: '2px 8px',
+                            borderRadius: '4px'
+                          }}>
+                            {getDataTablePermission(table.id) === 'manage' ? '可管理' : 
+                             getDataTablePermission(table.id) === 'edit' ? '可编辑' : 
+                             getDataTablePermission(table.id) === 'read' ? '仅可阅读' : '无权限'}
+                          </span>
+                        </div>
+                      ))}
+                      {/* 占位的文件夹 */}
+                      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#8F959E' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="#FCD34D">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <span style={{ flex: 1, fontSize: '14px' }}>归档</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 右侧：权限设置 */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      border: '1px solid #E5E6EB',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      backgroundColor: '#F9FAFB'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 9h18M9 21V9M15 21V9"/>
+                          </svg>
+                          <span style={{ fontWeight: 500, fontSize: '15px' }}>
+                            {dataTables.find(t => t.id === selectedDataTable)?.name}权限
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 权限选项 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="radio" 
+                            name="data-table-permission"
+                            checked={getDataTablePermission(selectedDataTable) === 'manage'}
+                            disabled={isReadOnlyRole}
+                            onChange={() => updateDataTablePermission(selectedDataTable, 'manage')}
+                          />
+                          <span style={{ fontSize: '14px' }}>可管理</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="radio" 
+                            name="data-table-permission"
+                            checked={getDataTablePermission(selectedDataTable) === 'edit'}
+                            disabled={isReadOnlyRole}
+                            onChange={() => updateDataTablePermission(selectedDataTable, 'edit')}
+                          />
+                          <span style={{ fontSize: '14px' }}>可编辑</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="radio" 
+                            name="data-table-permission"
+                            checked={getDataTablePermission(selectedDataTable) === 'read'}
+                            disabled={isReadOnlyRole}
+                            onChange={() => updateDataTablePermission(selectedDataTable, 'read')}
+                          />
+                          <span style={{ fontSize: '14px' }}>仅可阅读</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="radio" 
+                            name="data-table-permission"
+                            checked={getDataTablePermission(selectedDataTable) === 'none'}
+                            disabled={isReadOnlyRole}
+                            onChange={() => updateDataTablePermission(selectedDataTable, 'none')}
+                          />
+                          <span style={{ fontSize: '14px' }}>无权限</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 详细权限 - 仅在选择可管理、可编辑、仅可阅读时显示 */}
+                    {getDataTablePermission(selectedDataTable) !== 'none' && (
+                      <div style={{ marginTop: '24px' }}>
+                        <div style={{ fontWeight: 500, fontSize: '15px', marginBottom: '16px' }}>详细权限</div>
+                        
+                        {/* 记录权限 */}
+                        <div style={{
+                          border: '1px solid #E5E6EB',
+                          borderRadius: '6px',
+                          padding: '12px 16px',
+                          marginBottom: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="1.5">
+                              <rect x="3" y="3" width="18" height="18" rx="2"/>
+                              <path d="M3 9h18M9 3v18"/>
+                            </svg>
+                            <span>记录权限</span>
+                          </div>
+                          <span style={{ fontSize: '13px', color: '#8F959E' }}>
+                            {getDataTablePermission(selectedDataTable) === 'read' ? '全部可阅读' : '全部可编辑'}
+                          </span>
+                        </div>
+
+                        {/* 字段权限 */}
+                        <div style={{
+                          border: '1px solid #E5E6EB',
+                          borderRadius: '6px',
+                          padding: '12px 16px',
+                          marginBottom: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="1.5">
+                              <rect x="3" y="3" width="18" height="18" rx="2"/>
+                              <path d="M12 3v18M3 12h18"/>
+                            </svg>
+                            <span>字段权限</span>
+                          </div>
+                          <span style={{ fontSize: '13px', color: '#8F959E' }}>
+                            {getDataTablePermission(selectedDataTable) === 'read' ? '全部可阅读' : '部分可编辑'}
+                          </span>
+                        </div>
+
+                        {/* 视图权限 */}
+                        <div style={{
+                          border: '1px solid #E5E6EB',
+                          borderRadius: '6px',
+                          padding: '12px 16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F2329" strokeWidth="1.5">
+                              <path d="M1 21h22L12 2 1 21z"/>
+                              <path d="M12 9v4"/>
+                              <path d="M12 17h.01"/>
+                            </svg>
+                            <span>视图权限</span>
+                          </div>
+                          <span style={{ fontSize: '13px', color: '#8F959E' }}>
+                            {getDataTablePermission(selectedDataTable) === 'read' ? '全部可阅读' : '可编辑，全部可阅读'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {activeTab === "dashboard" && (
